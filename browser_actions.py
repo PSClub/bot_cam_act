@@ -1,4 +1,4 @@
-# 30_browser_actions.py
+# browser_actions.py
 # This file contains all the core browser automation functions.
 
 from datetime import datetime

@@ -1,13 +1,13 @@
-# 40_main.py
+# main.py
 # This is the main entry point for the booking automation script.
 
 import asyncio
 from playwright.async_api import async_playwright
 
 # Import functions and variables from our other files
-from 10_config import LOGIN_URL, BASKET_URL, USERNAME, PASSWORD, BOOKING_FILE_PATH
-from 20_data_processor import process_booking_file
-from 30_browser_actions import navigate_to_court, find_date_on_calendar, book_slot, checkout_basket
+from config import LOGIN_URL, BASKET_URL, USERNAME, PASSWORD, BOOKING_FILE_PATH
+from data_processor import process_booking_file
+from browser_actions import navigate_to_court, find_date_on_calendar, book_slot, checkout_basket
 
 async def main():
     """

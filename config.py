@@ -1,4 +1,4 @@
-# 10_config.py
+# config.py
 # This file holds the configuration for the booking bot.
 
 import os

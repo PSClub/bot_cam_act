@@ -37,4 +37,4 @@ jobs:
       env:
         CAMDEN_USERNAME: ${{ secrets.CAMDEN_USERNAME }}
         CAMDEN_PASSWORD: ${{ secrets.CAMDEN_PASSWORD }}
-      run: python 40_main.py
+      run: python main.py

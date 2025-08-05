@@ -1,15 +1,15 @@
-# This workflow runs the tennis court booking script on a schedule.
+# This workflow runs the tennis court booking script when triggered by an external event.
 
-name: Ca LIF Tennis Court Booker
+name: Tennis Court Booker
 
 on:
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+  # This allows the workflow to be triggered by an external webhook call.
+  # We've named our custom event 'book-courts-event'.
+  repository_dispatch:
+    types: [book-courts-event]
 
-  schedule:
-    # Books 5 weeks +-1 day ahead. Runs at 00:01 UTC on Tuesday (test), Wednesday, Friday, and Sunday.
-    # Use https://crontab.guru/ to generate your desired schedule.
-    - cron: '1 0 * * 2,3,5,0'
+  # This is kept so you can still run the workflow manually from the Actions tab for testing.
+  workflow_dispatch:
 
 jobs:
   book-courts:
@@ -33,8 +33,10 @@ jobs:
       run: playwright install --with-deps
 
     - name: Run booking script
-      # Pass the secrets as environment variables to the Python script
+      # The script will still get its credentials from the repository secrets.
       env:
         CAMDEN_USERNAME: ${{ secrets.CAMDEN_USERNAME }}
         CAMDEN_PASSWORD: ${{ secrets.CAMDEN_PASSWORD }}
       run: python main.py
+
+

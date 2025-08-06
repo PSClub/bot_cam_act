@@ -38,7 +38,7 @@ jobs:
         CAMDEN_PASSWORD: ${{ secrets.CAMDEN_PASSWORD }}
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         KYLE_EMAIL_ADDRESS: ${{ vars.KYLE_EMAIL_ADDRESS }}
-        IT_EMAIL_ADDRESS: ${{ vars.IT_EMAIL_ADDRESS }
+        IT_EMAIL_ADDRESS: ${{ vars.IT_EMAIL_ADDRESS }}
       run: python main.py
 
     - name: Upload Screenshots Artifact
@@ -51,3 +51,4 @@ jobs:
         # This option prevents the workflow from failing if no screenshots were created.
 
         if-no-files-found: ignore
+

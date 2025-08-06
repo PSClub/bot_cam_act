@@ -6,25 +6,30 @@ import pytz
 from datetime import datetime
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-# --- New Screenshot Helper Function ---
-async def take_screenshot(page, reason):
+# --- Updated Screenshot Helper Function ---
+async def take_screenshot(page, reason, slot_details=None):
     """
     Takes a full-page screenshot with a descriptive, timestamped filename
     and saves it to the 'screenshots' directory.
     """
-    # Ensure the screenshots directory exists
     screenshot_dir = "screenshots"
     os.makedirs(screenshot_dir, exist_ok=True)
     
-    # Get current time in London for the filename
     london_tz = pytz.timezone("Europe/London")
     now = datetime.now(london_tz)
     timestamp = now.strftime("%y.%m.%d_%H-%M-%S")
     
-    # Sanitize the reason for use in a filename
     sanitized_reason = reason.replace(" ", "_").replace(":", "").replace("/", "-")
     
-    filename = f"{timestamp}_{sanitized_reason}.png"
+    # Add slot details to the filename if they are provided
+    if slot_details:
+        court_name = slot_details[0].split('/')[-2]
+        date = slot_details[1].replace('/', '-')
+        time = slot_details[2]
+        filename = f"{timestamp}_{sanitized_reason}_{court_name}_{date}_{time}.png"
+    else:
+        filename = f"{timestamp}_{sanitized_reason}.png"
+
     filepath = os.path.join(screenshot_dir, filename)
     
     try:
@@ -47,22 +52,19 @@ async def navigate_to_court(page, court_url):
         await take_screenshot(page, "navigation_error")
         return False
 
-async def find_date_on_calendar(page, target_date_str):
+async def find_date_on_calendar(page, target_date_str, slot_details):
     """Navigates the booking calendar to find the week containing the target date."""
     date_obj = datetime.strptime(target_date_str, "%d/%m/%Y")
     formatted_date = f"{date_obj.strftime('%a').upper()} {date_obj.day}/{date_obj.month}"
     print(f"Searching for week containing '{formatted_date}'...")
 
-    for i in range(15): # Max 15 clicks to prevent infinite loops
+    for i in range(15):
         date_header_locator = page.locator("h4.timetable-title")
         
-        # Check if the target date is visible on the current page
         if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=1000):
             print(f"✅ Found date '{formatted_date}' on the calendar.")
             return True
 
-        # --- MODIFIED LOGIC ---
-        # Get the last visible date on the page BEFORE clicking
         visible_dates_before_click = await date_header_locator.all_inner_texts()
         last_date_before_click = visible_dates_before_click[-1] if visible_dates_before_click else None
         print(f"  - Latest date currently visible: {last_date_before_click}")
@@ -73,7 +75,6 @@ async def find_date_on_calendar(page, target_date_str):
             print("  - Clicking 'Next Week'...")
             await next_week_button.click()
 
-            # Wait for the page to actually update by checking that the last date has changed.
             await page.wait_for_function(
                 f"""
                 () => {{
@@ -87,15 +88,15 @@ async def find_date_on_calendar(page, target_date_str):
             print("  - New week has loaded successfully.")
 
         except PlaywrightTimeoutError:
-            print(f"❌ Reached end of calendar (or page did not load), but did not find date {formatted_date}.")
-            await take_screenshot(page, "end_of_calendar")
+            print(f"❌ Reached end of calendar, but did not find date {formatted_date}.")
+            await take_screenshot(page, "end_of_calendar", slot_details)
             return False
             
     print(f"❌ Searched 15 weeks but did not find {formatted_date}.")
-    await take_screenshot(page, f"date_not_found_{target_date_str}")
+    await take_screenshot(page, f"date_not_found", slot_details)
     return False
 
-async def book_slot(page, target_date_str, target_time_str):
+async def book_slot(page, target_date_str, target_time_str, slot_details):
     """Finds a specific date/time slot by its unique href and clicks it."""
     href_time_format = target_time_str[:2]
     slot_locator = page.locator(
@@ -110,7 +111,7 @@ async def book_slot(page, target_date_str, target_time_str):
         return True
     except PlaywrightTimeoutError:
         print(f"⚠️ Slot at {target_time_str} is not available or is already booked.")
-        await take_screenshot(page, f"slot_unavailable_{target_date_str}_{target_time_str}")
+        await take_screenshot(page, f"slot_unavailable", slot_details)
         return False
 
 async def checkout_basket(page, basket_url):
@@ -118,7 +119,7 @@ async def checkout_basket(page, basket_url):
     try:
         print("\n--- Navigating to Basket and Checking Out ---")
         await page.goto(basket_url, wait_until="domcontentloaded")
-        await take_screenshot(page, "basket_page") # Screenshot 1: Basket page view
+        await take_screenshot(page, "basket_page")
         
         checkout_button = page.locator("#ctl00_PageContent_btnContinue")
         await checkout_button.wait_for(state="visible", timeout=10000)
@@ -127,16 +128,18 @@ async def checkout_basket(page, basket_url):
         await checkout_button.click()
         
         await page.wait_for_load_state('networkidle')
-        await take_screenshot(page, "payment_page") # Screenshot 2: After clicking 'Make Booking'
+        await take_screenshot(page, "payment_page")
         
-        success_locator = page.locator(":text('Payment Successful')")
+        # --- CORRECTED LOCATOR ---
+        # Target the <h1> heading specifically to resolve the ambiguity.
+        success_locator = page.locator("h1:has-text('Payment Successful')")
         try:
             await success_locator.wait_for(state="visible", timeout=15000)
             print("✅ 'Payment Successful' text found. Booking is confirmed!")
-            await take_screenshot(page, "payment_successful") # Screenshot 3: Final confirmation
+            await take_screenshot(page, "payment_successful")
             return True
         except PlaywrightTimeoutError:
-            print("❌ 'Payment Successful' text NOT found. Booking may have failed at the final step.")
+            print("❌ 'Payment Successful' text NOT found. Booking may have failed.")
             await take_screenshot(page, "payment_fail")
             return False
 

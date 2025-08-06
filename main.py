@@ -70,12 +70,14 @@ async def main():
                     current_court_url, current_date_str = target_court_url, None
 
                 if current_date_str != target_date:
-                    if not await find_date_on_calendar(page, target_date):
+                    # Pass slot_details for screenshot naming on failure
+                    if not await find_date_on_calendar(page, target_date, slot_details):
                         failed_bookings.append(slot_details)
                         continue
                     current_date_str = target_date
 
-                if await book_slot(page, target_date, target_time):
+                # Pass slot_details for screenshot naming on failure
+                if await book_slot(page, target_date, target_time, slot_details):
                     successful_bookings.append(slot_details)
                     current_court_url, current_date_str = None, None
                 else:

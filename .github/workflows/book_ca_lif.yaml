@@ -40,7 +40,7 @@ jobs:
 
     - name: Upload screenshots on failure
       # This step only runs if the previous steps have failed.
-      if: failure()
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: error-screenshots

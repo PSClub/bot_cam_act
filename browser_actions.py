@@ -52,22 +52,42 @@ async def find_date_on_calendar(page, target_date_str):
     date_obj = datetime.strptime(target_date_str, "%d/%m/%Y")
     formatted_date = f"{date_obj.strftime('%a').upper()} {date_obj.day}/{date_obj.month}"
     print(f"Searching for week containing '{formatted_date}'...")
-    for i in range(15):
-        visible_dates = await page.locator("h4.timetable-title").all_inner_texts()
-        if visible_dates:
-            print(f"  - Latest date currently visible: {visible_dates[-1]}")
 
+    for i in range(15): # Max 15 clicks to prevent infinite loops
+        date_header_locator = page.locator("h4.timetable-title")
+        
+        # Check if the target date is visible on the current page
         if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=1000):
             print(f"✅ Found date '{formatted_date}' on the calendar.")
             return True
+
+        # --- MODIFIED LOGIC ---
+        # Get the last visible date on the page BEFORE clicking
+        visible_dates_before_click = await date_header_locator.all_inner_texts()
+        last_date_before_click = visible_dates_before_click[-1] if visible_dates_before_click else None
+        print(f"  - Latest date currently visible: {last_date_before_click}")
+
         try:
             next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
-            await next_week_button.wait_for(state="visible", timeout=1000)
+            await next_week_button.wait_for(state="visible", timeout=2000)
             print("  - Clicking 'Next Week'...")
             await next_week_button.click()
-            await page.locator("#DateTimeDiv").wait_for(state="visible", timeout=15000)
+
+            # Wait for the page to actually update by checking that the last date has changed.
+            await page.wait_for_function(
+                f"""
+                () => {{
+                    const headers = Array.from(document.querySelectorAll('h4.timetable-title'));
+                    const lastHeader = headers[headers.length - 1];
+                    return lastHeader && lastHeader.innerText !== '{last_date_before_click}';
+                }}
+                """,
+                timeout=15000
+            )
+            print("  - New week has loaded successfully.")
+
         except PlaywrightTimeoutError:
-            print(f"❌ Reached end of calendar, but did not find date {formatted_date}.")
+            print(f"❌ Reached end of calendar (or page did not load), but did not find date {formatted_date}.")
             await take_screenshot(page, "end_of_calendar")
             return False
             

@@ -4,7 +4,6 @@ name: Tennis Court Booker
 
 on:
   # This allows the workflow to be triggered by an external webhook call.
-  # We've named our custom event 'book-courts-event'.
   repository_dispatch:
     types: [book-courts-event]
 
@@ -39,4 +38,10 @@ jobs:
         CAMDEN_PASSWORD: ${{ secrets.CAMDEN_PASSWORD }}
       run: python main.py
 
-
+    - name: Upload screenshots on failure
+      # This step only runs if the previous steps have failed.
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: error-screenshots
+        path: screenshots/

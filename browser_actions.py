@@ -1,8 +1,38 @@
 # browser_actions.py
 # This file contains all the core browser automation functions.
 
+import os
+import pytz
 from datetime import datetime
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+# --- New Screenshot Helper Function ---
+async def take_screenshot(page, reason):
+    """
+    Takes a full-page screenshot with a descriptive, timestamped filename
+    and saves it to the 'screenshots' directory.
+    """
+    # Ensure the screenshots directory exists
+    screenshot_dir = "screenshots"
+    os.makedirs(screenshot_dir, exist_ok=True)
+    
+    # Get current time in London for the filename
+    london_tz = pytz.timezone("Europe/London")
+    now = datetime.now(london_tz)
+    timestamp = now.strftime("%y.%m.%d_%H-%M-%S")
+    
+    # Sanitize the reason for use in a filename
+    sanitized_reason = reason.replace(" ", "_").replace(":", "").replace("/", "-")
+    
+    filename = f"{timestamp}_{sanitized_reason}.png"
+    filepath = os.path.join(screenshot_dir, filename)
+    
+    try:
+        await page.screenshot(path=filepath, full_page=True)
+        print(f"📸 Screenshot saved: {filepath}")
+    except Exception as e:
+        print(f"❌ Could not save screenshot. Error: {e}")
+
 
 async def navigate_to_court(page, court_url):
     """Navigates the browser to the specified court booking page."""
@@ -14,6 +44,7 @@ async def navigate_to_court(page, court_url):
         return True
     except Exception as e:
         print(f"\n❌ An error occurred during navigation: {e}")
+        await take_screenshot(page, "navigation_error")
         return False
 
 async def find_date_on_calendar(page, target_date_str):
@@ -22,18 +53,26 @@ async def find_date_on_calendar(page, target_date_str):
     formatted_date = f"{date_obj.strftime('%a').upper()} {date_obj.day}/{date_obj.month}"
     print(f"Searching for week containing '{formatted_date}'...")
     for i in range(15):
+        visible_dates = await page.locator("h4.timetable-title").all_inner_texts()
+        if visible_dates:
+            print(f"  - Latest date currently visible: {visible_dates[-1]}")
+
         if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=1000):
             print(f"✅ Found date '{formatted_date}' on the calendar.")
             return True
         try:
             next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
             await next_week_button.wait_for(state="visible", timeout=1000)
+            print("  - Clicking 'Next Week'...")
             await next_week_button.click()
             await page.locator("#DateTimeDiv").wait_for(state="visible", timeout=15000)
         except PlaywrightTimeoutError:
             print(f"❌ Reached end of calendar, but did not find date {formatted_date}.")
+            await take_screenshot(page, "end_of_calendar")
             return False
+            
     print(f"❌ Searched 15 weeks but did not find {formatted_date}.")
+    await take_screenshot(page, f"date_not_found_{target_date_str}")
     return False
 
 async def book_slot(page, target_date_str, target_time_str):
@@ -51,28 +90,37 @@ async def book_slot(page, target_date_str, target_time_str):
         return True
     except PlaywrightTimeoutError:
         print(f"⚠️ Slot at {target_time_str} is not available or is already booked.")
+        await take_screenshot(page, f"slot_unavailable_{target_date_str}_{target_time_str}")
         return False
 
 async def checkout_basket(page, basket_url):
-    """Navigates to the basket and finalises the booking."""
+    """Navigates to the basket, takes screenshots, and finalises the booking."""
     try:
         print("\n--- Navigating to Basket and Checking Out ---")
         await page.goto(basket_url, wait_until="domcontentloaded")
+        await take_screenshot(page, "basket_page") # Screenshot 1: Basket page view
+        
         checkout_button = page.locator("#ctl00_PageContent_btnContinue")
         await checkout_button.wait_for(state="visible", timeout=10000)
+        
         print("Basket page loaded. Clicking 'Make Booking'...")
         await checkout_button.click()
+        
         await page.wait_for_load_state('networkidle')
+        await take_screenshot(page, "payment_page") # Screenshot 2: After clicking 'Make Booking'
+        
         success_locator = page.locator(":text('Payment Successful')")
         try:
             await success_locator.wait_for(state="visible", timeout=15000)
             print("✅ 'Payment Successful' text found. Booking is confirmed!")
+            await take_screenshot(page, "payment_successful") # Screenshot 3: Final confirmation
             return True
         except PlaywrightTimeoutError:
-            print("❌ 'Payment Successful' text NOT found. Booking may have failed.")
-            await page.screenshot(path="checkout_fail.png")
+            print("❌ 'Payment Successful' text NOT found. Booking may have failed at the final step.")
+            await take_screenshot(page, "payment_fail")
             return False
+
     except Exception as e:
         print(f"❌ An error occurred during checkout: {e}")
-        await page.screenshot(path="checkout_error.png")
+        await take_screenshot(page, "checkout_critical_error")
         return False

@@ -38,10 +38,12 @@ jobs:
         CAMDEN_PASSWORD: ${{ secrets.CAMDEN_PASSWORD }}
       run: python main.py
 
-    - name: Upload screenshots on failure
-      # This step only runs if the previous steps have failed.
+    - name: Upload Screenshots Artifact
+      # This step now runs always, so any generated screenshots will be saved.
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: error-screenshots
+        name: booking-screenshots
         path: screenshots/
+        # This option prevents the workflow from failing if no screenshots were created.
+        if-no-files-found: ignore

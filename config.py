@@ -17,7 +17,8 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 BOOKING_FILE_PATH = 'ca_lif_booking_dates.csv'
 
 # --- Email Settings ---
-SENDER_EMAIL = os.environ.get("IT_EMAIL_ADDRESS")
+SENDER_EMAIL = os.environ.get("KYLE_EMAIL_ADDRESS")
 RECIPIENT_KYLE = os.environ.get("KYLE_EMAIL_ADDRESS")
 RECIPIENT_INFO = os.environ.get("INFO_EMAIL_ADDRESS")
+
 

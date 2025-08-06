@@ -22,7 +22,8 @@ from config import (
     PASSWORD,
     BOOKING_FILE_PATH,
     SENDER_EMAIL,
-    RECIPIENT_EMAIL,
+    RECIPIENT_KYLE,
+    RECIPIENT_INFO,
     GMAIL_APP_PASSWORD,
 )
 from data_processor import process_booking_file
@@ -45,13 +46,19 @@ async def send_email_report(log_output, successful_bookings, failed_bookings):
     """Sends an email report with the script's log and any screenshots."""
     print("\n--- Preparing Email Report ---")
 
-    # Email Subject
+    # --- Email Recipients ---
+    # Filter out any None or empty email addresses
+    recipients = [addr for addr in [RECIPIENT_KYLE, RECIPIENT_INFO] if addr]
+    if not recipients:
+        print("No recipient emails configured. Skipping email report.")
+        return
+
+    # --- Email Subject ---
     subject = f"bot_cam_act: Booking Process Report - {datetime.now(pytz.timezone('Europe/London')).strftime('%Y-%m-%d %H:%M')}"
 
-    # Email Body
-    body = "<h2>Booking Process Log</h2>"
-    body += f"<pre>{log_output}</pre>"
-    body += "<h2>Booking Summary</h2>"
+    # --- Email Body ---
+    # Start with the summary, then add the log
+    body = "<h2>Booking Summary</h2>"
     body += f"<b>Successfully booked: {len(successful_bookings)} slots.</b>"
     if successful_bookings:
         body += "<ul>"
@@ -65,11 +72,16 @@ async def send_email_report(log_output, successful_bookings, failed_bookings):
         for slot in failed_bookings:
             body += f"<li>{slot[0].split('/')[-2]} on {slot[1]} @ {slot[2]}</li>"
         body += "</ul>"
+    
+    body += "<hr>" # Add a separator
+    body += "<h2>Booking Process Log</h2>"
+    body += f"<pre>{log_output}</pre>"
 
-    # Create the email
+
+    # --- Create the email ---
     msg = MIMEMultipart()
     msg["From"] = SENDER_EMAIL
-    msg["To"] = RECIPIENT_EMAIL
+    msg["To"] = ", ".join(recipients) # Join multiple recipients
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "html"))
 
@@ -90,13 +102,13 @@ async def send_email_report(log_output, successful_bookings, failed_bookings):
                 msg.attach(part)
                 print(f"Attaching screenshot: {filename}")
 
-    # Send the email
+    # --- Send the email ---
     try:
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
             server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
             server.send_message(msg)
-            print("✅ Email report sent successfully.")
+            print(f"✅ Email report sent successfully to: {', '.join(recipients)}")
     except Exception as e:
         print(f"❌ Failed to send email report. Error: {e}")
 

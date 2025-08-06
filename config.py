@@ -12,6 +12,10 @@ BASKET_URL = "https://camdenactive.camden.gov.uk/basket/"
 # The names must match the secret names you create in GitHub.
 USERNAME = os.environ.get("CAMDEN_USERNAME")
 PASSWORD = os.environ.get("CAMDEN_PASSWORD")
-
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 # --- File Path ---
 BOOKING_FILE_PATH = 'ca_lif_booking_dates.csv'
+
+# --- Email Settings ---
+SENDER_EMAIL = os.environ.get("IT_EMAIL_ADDRESS")
+RECIPIENT_EMAIL = os.environ.get("IT_EMAIL_ADDRESS")

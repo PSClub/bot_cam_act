@@ -2,18 +2,34 @@
 # This is the main entry point for the booking automation script.
 
 import asyncio
+import pytz
+from datetime import datetime
 from playwright.async_api import async_playwright
 
 # Import functions and variables from our other files
 from config import LOGIN_URL, BASKET_URL, USERNAME, PASSWORD, BOOKING_FILE_PATH
 from data_processor import process_booking_file
-from browser_actions import navigate_to_court, find_date_on_calendar, book_slot, checkout_basket
+from browser_actions import (
+    navigate_to_court, 
+    find_date_on_calendar, 
+    book_slot, 
+    checkout_basket,
+    take_screenshot  # Import the new screenshot function
+)
+
+def print_london_time():
+    """Prints the current time in the London timezone."""
+    london_tz = pytz.timezone("Europe/London")
+    now = datetime.now(london_tz)
+    print(f"Current time in London: {now.strftime('%A, %d %B %Y at %I:%M:%S %p %Z')}")
+
 
 async def main():
     """
     The main asynchronous function that orchestrates the entire booking process.
     """
-    # First, process the CSV to get the list of slots to book.
+    print_london_time()
+    
     slots_to_book = process_booking_file(BOOKING_FILE_PATH)
     if not slots_to_book:
         print("Booking list is empty or could not be processed. Exiting.")
@@ -23,9 +39,8 @@ async def main():
         print("Error: CAMDEN_USERNAME and CAMDEN_PASSWORD secrets are not set. Exiting.")
         return
 
-    # Launch the browser and page
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True) # Headless is essential for GitHub Actions
+        browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
 
         try:
@@ -55,12 +70,14 @@ async def main():
                     current_court_url, current_date_str = target_court_url, None
 
                 if current_date_str != target_date:
-                    if not await find_date_on_calendar(page, target_date):
+                    # Pass slot_details for screenshot naming on failure
+                    if not await find_date_on_calendar(page, target_date, slot_details):
                         failed_bookings.append(slot_details)
                         continue
                     current_date_str = target_date
 
-                if await book_slot(page, target_date, target_time):
+                # Pass slot_details for screenshot naming on failure
+                if await book_slot(page, target_date, target_time, slot_details):
                     successful_bookings.append(slot_details)
                     current_court_url, current_date_str = None, None
                 else:
@@ -85,10 +102,11 @@ async def main():
 
         except Exception as e:
             print(f"\n❌ A critical error occurred during the process: {e}")
-            await page.screenshot(path="critical_error.png")
+            await take_screenshot(page, "critical_error")
         finally:
             # --- 5. Logout and Cleanup ---
             print("\n--- Finalising Session ---")
+            print_london_time()
             try:
                 if await page.locator("a:has-text('Logout')").is_visible(timeout=5000):
                     print("Logging out...")

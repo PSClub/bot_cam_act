@@ -4,7 +4,6 @@ name: Tennis Court Booker
 
 on:
   # This allows the workflow to be triggered by an external webhook call.
-  # We've named our custom event 'book-courts-event'.
   repository_dispatch:
     types: [book-courts-event]
 
@@ -39,4 +38,12 @@ jobs:
         CAMDEN_PASSWORD: ${{ secrets.CAMDEN_PASSWORD }}
       run: python main.py
 
-
+    - name: Upload Screenshots Artifact
+      # This step now runs always, so any generated screenshots will be saved.
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: booking-screenshots
+        path: screenshots/
+        # This option prevents the workflow from failing if no screenshots were created.
+        if-no-files-found: ignore

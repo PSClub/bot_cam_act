@@ -2,19 +2,36 @@
 # This is the main entry point for the booking automation script.
 
 import asyncio
+import io
+import os
 import pytz
+import smtplib
+import sys
 from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from playwright.async_api import async_playwright
 
 # Import functions and variables from our other files
-from config import LOGIN_URL, BASKET_URL, USERNAME, PASSWORD, BOOKING_FILE_PATH
+from config import (
+    LOGIN_URL,
+    BASKET_URL,
+    USERNAME,
+    PASSWORD,
+    BOOKING_FILE_PATH,
+    SENDER_EMAIL,
+    RECIPIENT_EMAIL,
+    GMAIL_APP_PASSWORD,
+)
 from data_processor import process_booking_file
 from browser_actions import (
-    navigate_to_court, 
-    find_date_on_calendar, 
-    book_slot, 
+    navigate_to_court,
+    find_date_on_calendar,
+    book_slot,
     checkout_basket,
-    take_screenshot  # Import the new screenshot function
+    take_screenshot,
 )
 
 def print_london_time():
@@ -24,10 +41,74 @@ def print_london_time():
     print(f"Current time in London: {now.strftime('%A, %d %B %Y at %I:%M:%S %p %Z')}")
 
 
+async def send_email_report(log_output, successful_bookings, failed_bookings):
+    """Sends an email report with the script's log and any screenshots."""
+    print("\n--- Preparing Email Report ---")
+
+    # Email Subject
+    subject = f"bot_cam_act: Booking Process Report - {datetime.now(pytz.timezone('Europe/London')).strftime('%Y-%m-%d %H:%M')}"
+
+    # Email Body
+    body = "<h2>Booking Process Log</h2>"
+    body += f"<pre>{log_output}</pre>"
+    body += "<h2>Booking Summary</h2>"
+    body += f"<b>Successfully booked: {len(successful_bookings)} slots.</b>"
+    if successful_bookings:
+        body += "<ul>"
+        for slot in successful_bookings:
+            body += f"<li>{slot[0].split('/')[-2]} on {slot[1]} @ {slot[2]}</li>"
+        body += "</ul>"
+
+    body += f"<b>Failed or skipped: {len(failed_bookings)} slots.</b>"
+    if failed_bookings:
+        body += "<ul>"
+        for slot in failed_bookings:
+            body += f"<li>{slot[0].split('/')[-2]} on {slot[1]} @ {slot[2]}</li>"
+        body += "</ul>"
+
+    # Create the email
+    msg = MIMEMultipart()
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECIPIENT_EMAIL
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "html"))
+
+    # Attach screenshots
+    screenshot_dir = "screenshots"
+    if os.path.exists(screenshot_dir):
+        for filename in os.listdir(screenshot_dir):
+            if filename.endswith(".png"):
+                path = os.path.join(screenshot_dir, filename)
+                with open(path, "rb") as attachment:
+                    part = MIMEBase("application", "octet-stream")
+                    part.set_payload(attachment.read())
+                encoders.encode_base64(part)
+                part.add_header(
+                    "Content-Disposition",
+                    f"attachment; filename= {filename}",
+                )
+                msg.attach(part)
+                print(f"Attaching screenshot: {filename}")
+
+    # Send the email
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+            print("✅ Email report sent successfully.")
+    except Exception as e:
+        print(f"❌ Failed to send email report. Error: {e}")
+
+
 async def main():
     """
     The main asynchronous function that orchestrates the entire booking process.
     """
+    # Capture print statements to a string
+    old_stdout = sys.stdout
+    sys.stdout = log_capture_string = io.StringIO()
+
     print_london_time()
     
     slots_to_book = process_booking_file(BOOKING_FILE_PATH)
@@ -38,6 +119,12 @@ async def main():
     if not USERNAME or not PASSWORD:
         print("Error: CAMDEN_USERNAME and CAMDEN_PASSWORD secrets are not set. Exiting.")
         return
+    
+    if not GMAIL_APP_PASSWORD:
+        print("Error: GMAIL_APP_PASSWORD secret is not set. Email reporting disabled.")
+
+
+    successful_bookings, failed_bookings = [], []
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -56,7 +143,7 @@ async def main():
 
             # --- 2. Process Bookings ---
             print("\n--- Starting Booking Process ---")
-            successful_bookings, failed_bookings = [], []
+            
             current_court_url, current_date_str = None, None
 
             for slot_details in slots_to_book:
@@ -70,13 +157,11 @@ async def main():
                     current_court_url, current_date_str = target_court_url, None
 
                 if current_date_str != target_date:
-                    # Pass slot_details for screenshot naming on failure
                     if not await find_date_on_calendar(page, target_date, slot_details):
                         failed_bookings.append(slot_details)
                         continue
                     current_date_str = target_date
 
-                # Pass slot_details for screenshot naming on failure
                 if await book_slot(page, target_date, target_time, slot_details):
                     successful_bookings.append(slot_details)
                     current_court_url, current_date_str = None, None
@@ -120,6 +205,16 @@ async def main():
             
             print("Closing browser.")
             await browser.close()
+            
+            # Restore stdout and get log content
+            log_content = log_capture_string.getvalue()
+            sys.stdout = old_stdout
+            print(log_content) # print logs to console as well
+
+            # Send email report
+            if GMAIL_APP_PASSWORD:
+                await send_email_report(log_content, successful_bookings, failed_bookings)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

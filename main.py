@@ -129,7 +129,7 @@ async def main():
         return
 
     if not USERNAME or not PASSWORD:
-        print("Error: CAMDEN_USERNAME and CAMDEN_PASSWORD secrets are not set. Exiting.")
+        print("Error: BRUCE_CAM_EMAIL_ADDRESS and BRUCE_CAM_PASSWORD secrets are not set. Exiting.")
         return
     
     if not GMAIL_APP_PASSWORD:

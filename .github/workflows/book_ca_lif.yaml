@@ -34,8 +34,8 @@ jobs:
     - name: Run booking script
       # The script will still get its credentials from the repository secrets.
       env:
-        CAMDEN_USERNAME: ${{ secrets.CAMDEN_USERNAME }}
-        CAMDEN_PASSWORD: ${{ secrets.CAMDEN_PASSWORD }}
+        BRUCE_CAM_EMAIL_ADDRESS: ${{ secrets.BRUCE_CAM_EMAIL_ADDRESS }}
+        BRUCE_CAM_PASSWORD: ${{ secrets.BRUCE_CAM_PASSWORD }}
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         KYLE_EMAIL_ADDRESS: ${{ vars.KYLE_EMAIL_ADDRESS }}
         IT_EMAIL_ADDRESS: ${{ vars.IT_EMAIL_ADDRESS }}

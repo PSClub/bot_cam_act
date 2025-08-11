@@ -34,23 +34,26 @@ jobs:
     - name: Run booking script
       # The script will get its credentials and payment details from repository secrets.
       env:
-        # Authentication credentials
-        BRUCE_CAM_EMAIL_ADDRESS: ${{ secrets.BRUCE_CAM_EMAIL_ADDRESS }}
+        # Authentication credentials (matching your current setup)
+        BRUCE_CAM_EMAIL_ADDRESS: ${{ vars.BRUCE_CAM_EMAIL_ADDRESS }}
         BRUCE_CAM_PASSWORD: ${{ secrets.BRUCE_CAM_PASSWORD }}
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         
-        # Email recipients
+        # Email recipients (all stored as variables in your repo)
         KYLE_EMAIL_ADDRESS: ${{ vars.KYLE_EMAIL_ADDRESS }}
         IT_EMAIL_ADDRESS: ${{ vars.IT_EMAIL_ADDRESS }}
         INFO_EMAIL_ADDRESS: ${{ vars.INFO_EMAIL_ADDRESS }}
+        HELLO_EMAIL_ADDRESS: ${{ vars.HELLO_EMAIL_ADDRESS }}
+        FATHER_CAM_EMAIL_ADDRESS: ${{ vars.FATHER_CAM_EMAIL_ADDRESS }}
+        MOTHER_CAM_EMAIL_ADDRESS: ${{ vars.MOTHER_CAM_EMAIL_ADDRESS }}
         
-        # Card payment details
+        # Card payment details (will be added as secrets)
         LB_CARD_NUMBER: ${{ secrets.LB_CARD_NUMBER }}
         LB_CARD_EXPIRY_MONTH: ${{ secrets.LB_CARD_EXPIRY_MONTH }}
         LB_CARD_EXPIRY_YEAR: ${{ secrets.LB_CARD_EXPIRY_YEAR }}
         LB_CARD_SECURITY_CODE: ${{ secrets.LB_CARD_SECURITY_CODE }}
         
-        # Cardholder details
+        # Cardholder details (will be added as secrets)
         LB_CARDHOLDER_NAME: ${{ secrets.LB_CARDHOLDER_NAME }}
         LB_ADDRESS: ${{ secrets.LB_ADDRESS }}
         LB_CITY: ${{ secrets.LB_CITY }}

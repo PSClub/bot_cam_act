@@ -7,6 +7,7 @@ import os
 import pytz
 import smtplib
 import sys
+import argparse
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -25,6 +26,16 @@ from config import (
     RECIPIENT_KYLE,
     RECIPIENT_INFO,
     GMAIL_APP_PASSWORD,
+    SHOW_BROWSER,
+    KEEP_BROWSER_OPEN,
+    LB_CARD_NUMBER,
+    LB_CARD_EXPIRY_MONTH,
+    LB_CARD_EXPIRY_YEAR,
+    LB_CARD_SECURITY_CODE,
+    LB_CARDHOLDER_NAME,
+    LB_ADDRESS,
+    LB_CITY,
+    LB_POSTCODE,
 )
 from data_processor import process_booking_file
 from browser_actions import (
@@ -113,15 +124,76 @@ async def send_email_report(log_output, successful_bookings, failed_bookings):
         print(f"❌ Failed to send email report. Error: {e}")
 
 
-async def main():
+def parse_arguments():
+    """Parse command line arguments for browser control."""
+    parser = argparse.ArgumentParser(description='Tennis Court Booking Bot')
+    parser.add_argument(
+        '--headless', 
+        action='store_true', 
+        default=not SHOW_BROWSER,
+        help='Run browser in headless mode (default: based on SHOW_BROWSER env var)'
+    )
+    parser.add_argument(
+        '--show-browser', 
+        action='store_true',
+        help='Show browser window (overrides --headless)'
+    )
+    parser.add_argument(
+        '--keep-open', 
+        action='store_true',
+        default=KEEP_BROWSER_OPEN,
+        help='Keep browser open after completion for debugging (default: based on KEEP_BROWSER_OPEN env var)'
+    )
+    parser.add_argument(
+        '--debug', 
+        action='store_true',
+        help='Enable debug mode (shows browser and keeps it open)'
+    )
+    
+    args = parser.parse_args()
+    
+    # If debug mode is enabled, override other settings
+    if args.debug:
+        args.headless = False
+        args.show_browser = True
+        args.keep_open = True
+    
+    # If show-browser is specified, disable headless
+    if args.show_browser:
+        args.headless = False
+    
+    return args
+
+
+async def main(headless=True, keep_open=False):
     """
     The main asynchronous function that orchestrates the entire booking process.
+    
+    Args:
+        headless (bool): Whether to run browser in headless mode
+        keep_open (bool): Whether to keep browser open after completion
     """
-    # Capture print statements to a string
-    old_stdout = sys.stdout
-    sys.stdout = log_capture_string = io.StringIO()
-
     print_london_time()
+    print(f"Browser mode: {'Headless' if headless else 'Visible'}")
+    print(f"Keep browser open: {'Yes' if keep_open else 'No'}")
+    
+    # Capture print statements to a string for email reporting (but still show real-time)
+    log_capture_string = io.StringIO()
+    
+    class TeeOutput:
+        def __init__(self, *outputs):
+            self.outputs = outputs
+        def write(self, text):
+            for output in self.outputs:
+                output.write(text)
+                output.flush()
+        def flush(self):
+            for output in self.outputs:
+                output.flush()
+    
+    # Set up dual output: console + string capture
+    old_stdout = sys.stdout
+    sys.stdout = TeeOutput(old_stdout, log_capture_string)
     
     slots_to_book = process_booking_file(BOOKING_FILE_PATH)
     if not slots_to_book:
@@ -134,76 +206,160 @@ async def main():
     
     if not GMAIL_APP_PASSWORD:
         print("Error: GMAIL_APP_PASSWORD secret is not set. Email reporting disabled.")
+    
+    # Check for card details
+    if not LB_CARD_NUMBER or not LB_CARD_EXPIRY_MONTH or not LB_CARD_EXPIRY_YEAR or not LB_CARD_SECURITY_CODE:
+        print("Warning: Card details (LB_CARD_*) not fully configured. Payment processing may fail.")
+        print("Required: LB_CARD_NUMBER, LB_CARD_EXPIRY_MONTH, LB_CARD_EXPIRY_YEAR, LB_CARD_SECURITY_CODE")
+    else:
+        print("✅ Card details configured for payment processing.")
+    
+    # Check for cardholder details
+    if not LB_CARDHOLDER_NAME or not LB_ADDRESS or not LB_CITY or not LB_POSTCODE:
+        print("Warning: Cardholder details (LB_CARDHOLDER_*, LB_ADDRESS, LB_CITY, LB_POSTCODE) not fully configured.")
+        print("Required: LB_CARDHOLDER_NAME, LB_ADDRESS, LB_CITY, LB_POSTCODE")
+    else:
+        print("✅ Cardholder details configured for payment processing.")
 
 
     successful_bookings, failed_bookings = [], []
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+    # Don't use async context manager - keep Playwright instance alive
+    p = await async_playwright().start()
+    browser = await p.chromium.launch(headless=headless)
+    page = await browser.new_page()
 
-        try:
-            # --- 1. Login ---
-            print("\n--- Starting Login Process ---")
-            await page.goto(LOGIN_URL)
-            await page.locator("#rtPrivacyBannerAccept").click(timeout=5000)
-            await page.get_by_label("Email Address").fill(USERNAME)
-            await page.get_by_label("Password").fill(PASSWORD)
-            await page.locator("a.button-primary:has-text('Log in')").click()
-            await page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
-            print("✅ Login successful.")
+    try:
+        # --- 1. Login ---
+        print("\n--- Starting Login Process ---")
+        await page.goto(LOGIN_URL)
+        await page.locator("#rtPrivacyBannerAccept").click(timeout=5000)
+        await page.get_by_label("Email Address").fill(USERNAME)
+        await page.get_by_label("Password").fill(PASSWORD)
+        await page.locator("a.button-primary:has-text('Log in')").click()
+        await page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
+        print("✅ Login successful.")
 
-            # --- 2. Process Bookings ---
-            print("\n--- Starting Booking Process ---")
+        # --- 2. Process Bookings ---
+        print("\n--- Starting Booking Process ---")
+        
+        # Group slots by court and date for optimized booking
+        from collections import defaultdict
+        slots_by_court_date = defaultdict(list)
+        for slot_details in slots_to_book:
+            target_court_url, target_date, target_time = slot_details
+            court_name = target_court_url.split('/')[-2]
+            key = (court_name, target_date, target_court_url)
+            slots_by_court_date[key].append(slot_details)
+        
+        # Check if we should use strategic timing (near midnight)
+        import pytz
+        london_tz = pytz.timezone("Europe/London")
+        now = datetime.now(london_tz)
+        use_strategic_timing = (now.hour == 23 and now.minute >= 50) or (now.hour == 0 and now.minute <= 10)
+        
+        if use_strategic_timing:
+            print("🎯 Strategic timing mode activated - optimizing for midnight release!")
+        
+        current_court_url, current_date_str = None, None
+        calendar_positioned = False
+
+        for (court_name, target_date, target_court_url), court_date_slots in slots_by_court_date.items():
+            print(f"\n=== Processing {len(court_date_slots)} slot(s) for {court_name} on {target_date} ===")
             
-            current_court_url, current_date_str = None, None
+            # Navigate to court if different
+            if current_court_url != target_court_url:
+                if not await navigate_to_court(page, target_court_url):
+                    for slot_details in court_date_slots:
+                        failed_bookings.append(slot_details)
+                    continue
+                current_court_url = target_court_url
+                current_date_str = None
+                calendar_positioned = False
 
-            for slot_details in slots_to_book:
+            # Navigate to date if different
+            if current_date_str != target_date:
+                if not await find_date_on_calendar(page, target_date, court_date_slots[0], use_strategic_timing):
+                    for slot_details in court_date_slots:
+                        failed_bookings.append(slot_details)
+                    continue
+                current_date_str = target_date
+                calendar_positioned = True
+
+            # Book all slots for this court/date combination
+            first_slot_success = False
+            for i, slot_details in enumerate(court_date_slots):
                 target_court_url, target_date, target_time = slot_details
-                print(f"\n--- Processing: {target_court_url.split('/')[-2]} on {target_date} at {target_time} ---")
+                print(f"\n--- Processing slot {i+1}/{len(court_date_slots)}: {target_time} ---")
                 
-                if current_court_url != target_court_url:
-                    if not await navigate_to_court(page, target_court_url):
-                        failed_bookings.append(slot_details)
-                        continue
-                    current_court_url, current_date_str = target_court_url, None
-
-                if current_date_str != target_date:
-                    if not await find_date_on_calendar(page, target_date, slot_details):
-                        failed_bookings.append(slot_details)
-                        continue
-                    current_date_str = target_date
-
                 if await book_slot(page, target_date, target_time, slot_details):
                     successful_bookings.append(slot_details)
-                    current_court_url, current_date_str = None, None
+                    first_slot_success = True
+                    
+                    # If this is not the last slot for this court/date, go back to try next slot
+                    if i < len(court_date_slots) - 1:
+                        try:
+                            print("⬅️ Going back to book additional slot on same date...")
+                            await page.go_back()
+                            await page.wait_for_load_state('networkidle', timeout=10000)
+                            print("✅ Successfully returned to calendar view")
+                        except Exception as e:
+                            print(f"⚠️ Could not go back: {e}. Will re-navigate to calendar...")
+                            # Re-navigate if back button fails
+                            if not await navigate_to_court(page, target_court_url):
+                                for remaining_slot in court_date_slots[i+1:]:
+                                    failed_bookings.append(remaining_slot)
+                                break
+                            if not await find_date_on_calendar(page, target_date, court_date_slots[i+1], False):
+                                for remaining_slot in court_date_slots[i+1:]:
+                                    failed_bookings.append(remaining_slot)
+                                break
                 else:
                     failed_bookings.append(slot_details)
             
-            # --- 3. Checkout ---
-            if not successful_bookings:
-                print("\nNo slots were added to the basket. Terminating process.")
-            else:
-                await checkout_basket(page, BASKET_URL)
+            # Reset navigation state if we successfully booked at least one slot
+            if first_slot_success:
+                current_court_url, current_date_str = None, None
+        
+        # --- 3. Checkout ---
+        if not successful_bookings:
+            print("\nNo slots were added to the basket. Terminating process.")
+        else:
+            await checkout_basket(page, BASKET_URL, LB_CARD_NUMBER, LB_CARD_EXPIRY_MONTH, LB_CARD_EXPIRY_YEAR, LB_CARD_SECURITY_CODE, LB_CARDHOLDER_NAME, LB_ADDRESS, LB_CITY, LB_POSTCODE, USERNAME)
 
-            # --- 4. Final Summary ---
-            print("\n--- Booking Process Finished ---")
-            print(f"Successfully booked: {len(successful_bookings)} slots.")
-            if successful_bookings:
-                for slot in successful_bookings:
-                    print(f"  - {slot[0].split('/')[-2]} on {slot[1]} @ {slot[2]}")
-            print(f"Failed or skipped: {len(failed_bookings)} slots.")
-            if failed_bookings:
-                for slot in failed_bookings:
-                    print(f"  - {slot[0].split('/')[-2]} on {slot[1]} @ {slot[2]}")
+        # --- 4. Final Summary ---
+        print("\n--- Booking Process Finished ---")
+        print(f"Successfully booked: {len(successful_bookings)} slots.")
+        if successful_bookings:
+            for slot in successful_bookings:
+                print(f"  - {slot[0].split('/')[-2]} on {slot[1]} @ {slot[2]}")
+        print(f"Failed or skipped: {len(failed_bookings)} slots.")
+        if failed_bookings:
+            for slot in failed_bookings:
+                print(f"  - {slot[0].split('/')[-2]} on {slot[1]} @ {slot[2]}")
 
-        except Exception as e:
-            print(f"\n❌ A critical error occurred during the process: {e}")
-            await take_screenshot(page, "critical_error")
-        finally:
-            # --- 5. Logout and Cleanup ---
-            print("\n--- Finalising Session ---")
-            print_london_time()
+    except Exception as e:
+        print(f"\n❌ A critical error occurred during the process: {e}")
+        await take_screenshot(page, "critical_error")
+    finally:
+        # --- 5. Finalising Session ---
+        print("\n--- Finalising Session ---")
+        print_london_time()
+        
+        # Restore stdout and get log content first
+        sys.stdout = old_stdout
+        log_content = log_capture_string.getvalue()
+
+        if keep_open:
+            print("Skipping logout to keep session active for debugging.")
+            print("Browser session kept open for debugging.")
+            print("Press Ctrl+C to close the browser when finished.")
+            # Send email report before returning
+            if GMAIL_APP_PASSWORD:
+                await send_email_report(log_content, successful_bookings, failed_bookings)
+            return p, browser
+        else:
+            # Only logout if we're not keeping the browser open
             try:
                 if await page.locator("a:has-text('Logout')").is_visible(timeout=5000):
                     print("Logging out...")
@@ -217,11 +373,7 @@ async def main():
             
             print("Closing browser.")
             await browser.close()
-            
-            # Restore stdout and get log content
-            log_content = log_capture_string.getvalue()
-            sys.stdout = old_stdout
-            print(log_content) # print logs to console as well
+            await p.stop()
 
             # Send email report
             if GMAIL_APP_PASSWORD:
@@ -229,4 +381,39 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    args = parse_arguments()
+    
+    try:
+        if args.keep_open:
+            print("Starting booking bot with browser visible and kept open...")
+            print("Press Ctrl+C to close the browser when finished debugging.")
+            result = asyncio.run(main(headless=args.headless, keep_open=True))
+            # Keep the script running to maintain the browser session
+            try:
+                while True:
+                    import time
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print("\nReceived interrupt signal. Closing browser...")
+                if result:
+                    playwright_instance, browser = result
+                    try:
+                        # Create a new event loop for cleanup
+                        cleanup_loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(cleanup_loop)
+                        cleanup_loop.run_until_complete(browser.close())
+                        cleanup_loop.run_until_complete(playwright_instance.stop())
+                        cleanup_loop.close()
+                    except Exception:
+                        # Suppress cleanup errors - they're expected when interrupting
+                        pass
+                print("Browser closed. Exiting.")
+                # Give a moment for processes to clean up
+                import time
+                time.sleep(0.5)
+        else:
+            asyncio.run(main(headless=args.headless, keep_open=False))
+    except KeyboardInterrupt:
+        print("\nScript interrupted by user.")
+    except Exception as e:
+        print(f"An error occurred: {e}")

@@ -105,6 +105,11 @@ def process_booking_file(file_path, gsheet_id=None, gsheet_tab=None, service_acc
         gsheet_tab (str): Google Sheets tab/worksheet name (optional)
         service_account_json (str): Service account JSON for Google Sheets authentication (optional)
     """
+    # Debug logging to see what we're receiving
+    print(f"🔍 Debug: gsheet_id = '{gsheet_id}'")
+    print(f"🔍 Debug: gsheet_tab = '{gsheet_tab}'")
+    print(f"🔍 Debug: service_account_json = {'Set' if service_account_json else 'Not set'}")
+    
     # Try Google Sheets first if configured
     if gsheet_id and gsheet_tab and service_account_json:
         print("--- Attempting to download data from Google Sheets ---")
@@ -112,8 +117,20 @@ def process_booking_file(file_path, gsheet_id=None, gsheet_tab=None, service_acc
         if df is not None:
             print("✅ Successfully loaded data from Google Sheets")
         else:
-            print("⬇️ Google Sheets download failed, falling back to local file...")
-            df = pd.read_csv(file_path, skipinitialspace=True)
+            print("⬇️ Google Sheets download failed, attempting local file fallback...")
+            try:
+                df = pd.read_csv(file_path, skipinitialspace=True)
+                print("✅ Successfully loaded data from local CSV file")
+            except FileNotFoundError:
+                print(f"❌ Error: Neither Google Sheets nor local file '{file_path}' could be loaded.")
+                print("🔍 Please check:")
+                print("   1. Google Sheets API is enabled")
+                print("   2. Service account has access to the spreadsheet")
+                print("   3. Local CSV file exists (if using fallback)")
+                return []
+            except Exception as e:
+                print(f"❌ Error reading local CSV file: {e}")
+                return []
     else:
         print(f"--- Processing local booking file: {file_path} ---")
         if not gsheet_id and not gsheet_tab and not service_account_json:
@@ -124,7 +141,19 @@ def process_booking_file(file_path, gsheet_id=None, gsheet_tab=None, service_acc
             print("⚠️ Warning: Google Sheets tab name not configured. Using local file.")
         elif not service_account_json:
             print("⚠️ Warning: GOOGLE_SERVICE_ACCOUNT_JSON not set. Using local file.")
-        df = pd.read_csv(file_path, skipinitialspace=True)
+        
+        try:
+            df = pd.read_csv(file_path, skipinitialspace=True)
+            print("✅ Successfully loaded data from local CSV file")
+        except FileNotFoundError:
+            print(f"❌ Error: Local file '{file_path}' not found.")
+            print("🔍 Please check:")
+            print("   1. Local CSV file exists and is accessible")
+            print("   2. Or configure Google Sheets integration")
+            return []
+        except Exception as e:
+            print(f"❌ Error reading local CSV file: {e}")
+            return []
     
     try:
         df.columns = ['court_link', 'booking_date', 'time']

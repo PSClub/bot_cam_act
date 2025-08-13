@@ -36,6 +36,9 @@ from config import (
     LB_ADDRESS,
     LB_CITY,
     LB_POSTCODE,
+    GSHEET_CAM_ID,
+    GSHEET_TAB_NAME,
+    GOOGLE_SERVICE_ACCOUNT_JSON,
 )
 from data_processor import process_booking_file
 from browser_actions import (
@@ -195,7 +198,7 @@ async def main(headless=True, keep_open=False):
     old_stdout = sys.stdout
     sys.stdout = TeeOutput(old_stdout, log_capture_string)
     
-    slots_to_book = process_booking_file(BOOKING_FILE_PATH)
+    slots_to_book = process_booking_file(BOOKING_FILE_PATH, GSHEET_CAM_ID, GSHEET_TAB_NAME, GOOGLE_SERVICE_ACCOUNT_JSON)
     if not slots_to_book:
         print("Booking list is empty or could not be processed. Exiting.")
         return

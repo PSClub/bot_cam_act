@@ -17,6 +17,18 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 # --- File Path ---
 BOOKING_FILE_PATH = 'ca_lif_booking_dates.csv'
 
+# --- Google Sheets Configuration ---
+# Google Sheets ID for the booking data
+# Get this from the shareable link: https://docs.google.com/spreadsheets/d/SHEET_ID/edit
+GSHEET_CAM_ID = os.environ.get("GSHEET_CAM_ID")
+
+# Google Sheets tab/worksheet name containing the booking data
+GSHEET_TAB_NAME = "camden_active_booking_dates"
+
+# Google Service Account credentials (JSON content as string)
+# Create a service account in Google Cloud Console and download the JSON key
+GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+
 # --- Email Settings ---
 SENDER_EMAIL = os.environ.get("KYLE_EMAIL_ADDRESS")
 RECIPIENT_KYLE = os.environ.get("KYLE_EMAIL_ADDRESS")

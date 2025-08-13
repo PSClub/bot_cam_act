@@ -419,3 +419,10 @@ FodyWeavers.xsd
 
 *local*
 **/screenshots/
+
+# Google Cloud Service Account JSON files (sensitive credentials)
+*.json
+!package*.json
+camden-active-bookings-*.json
+*service-account*.json
+*credentials*.json

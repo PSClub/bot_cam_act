@@ -2,3 +2,8 @@ numpy==1.26.4
 pandas==2.2.1
 playwright==1.54.0
 pytz==2024.1
+google-api-python-client==2.110.0
+google-auth==2.25.2
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+gspread==5.12.4

@@ -106,7 +106,7 @@ async def check_london_time_near_midnight():
         return False, now
 
 async def wait_until_midnight():
-    """Wait until exactly 00:00:01 London time."""
+    """Wait until exactly 00:00:00 London time."""
     import pytz
     import asyncio
     
@@ -114,11 +114,11 @@ async def wait_until_midnight():
     
     while True:
         now = datetime.now(london_tz)
-        if now.hour == 0 and now.minute == 0 and now.second >= 1:
+        if now.hour == 0 and now.minute == 0 and now.second == 0:
             print(f"{get_timestamp()} ✅ Midnight reached! Time: {now.strftime('%H:%M:%S')}")
             break
         elif now.hour == 23 and now.minute == 59:
-            seconds_to_wait = 61 - now.second
+            seconds_to_wait = 60 - now.second
             print(f"{get_timestamp()} ⏰ Final countdown: {seconds_to_wait} seconds until midnight...")
             await optimized_countdown_logging(seconds_to_wait)
         else:
@@ -325,9 +325,6 @@ async def fill_payment_form(page, card_number, expiry_month, expiry_year, securi
         
         print(f"{get_timestamp()} ✅ Payment details filled successfully.")
         
-        # Take screenshot before submitting
-        await take_screenshot(page, "payment_form_filled")
-        
         # Click Continue button
         print(f"{get_timestamp()} Clicking 'Continue' to submit payment...")
         continue_button = page.locator("input[value='Continue']")
@@ -377,9 +374,6 @@ async def fill_cardholder_details(page, cardholder_name, address, city, postcode
         await page.fill("input[name='emailAddress']", email)
         
         print(f"{get_timestamp()} ✅ Cardholder details filled successfully.")
-        
-        # Take screenshot before submitting
-        await take_screenshot(page, "cardholder_details_filled")
         
         # Click Continue button
         print(f"{get_timestamp()} Clicking 'Continue' to submit cardholder details...")

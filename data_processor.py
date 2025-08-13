@@ -181,8 +181,8 @@ def process_booking_file(file_path, gsheet_id=None, gsheet_tab=None, service_acc
 
         print(f"{get_timestamp()} Found {len(booking_window_df)} bookings in the valid window.")
 
-        # 4. Sort the data
-        sorted_df = booking_window_df.sort_values(by=['time', 'parsed_date', 'court_link'])
+        # 4. Sort the data (later times first, then by date and court)
+        sorted_df = booking_window_df.sort_values(by=['time', 'parsed_date', 'court_link'], ascending=[False, True, True])
         
         # 5. Format for output
         sorted_df['booking_date_str'] = sorted_df['parsed_date'].dt.strftime('%d/%m/%Y')

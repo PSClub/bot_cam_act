@@ -63,13 +63,13 @@ def print_london_time():
 
 async def send_email_report(log_output, successful_bookings, failed_bookings):
     """Sends an email report with the script's log and any screenshots."""
-    print("\n--- Preparing Email Report ---")
+    print(f"{get_timestamp()} --- Preparing Email Report ---")
 
     # --- Email Recipients ---
     # Filter out any None or empty email addresses
     recipients = [addr for addr in [RECIPIENT_KYLE, RECIPIENT_INFO] if addr]
     if not recipients:
-        print("No recipient emails configured. Skipping email report.")
+        print(f"{get_timestamp()} No recipient emails configured. Skipping email report.")
         return
 
     # --- Email Subject ---
@@ -119,7 +119,7 @@ async def send_email_report(log_output, successful_bookings, failed_bookings):
                     f"attachment; filename= {filename}",
                 )
                 msg.attach(part)
-                print(f"Attaching screenshot: {filename}")
+                print(f"{get_timestamp()} Attaching screenshot: {filename}")
 
     # --- Send the email ---
     try:
@@ -127,9 +127,9 @@ async def send_email_report(log_output, successful_bookings, failed_bookings):
             server.starttls()
             server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
             server.send_message(msg)
-            print(f"✅ Email report sent successfully to: {', '.join(recipients)}")
+            print(f"{get_timestamp()} ✅ Email report sent successfully to: {', '.join(recipients)}")
     except Exception as e:
-        print(f"❌ Failed to send email report. Error: {e}")
+        print(f"{get_timestamp()} ❌ Failed to send email report. Error: {e}")
 
 
 def parse_arguments():
@@ -239,17 +239,17 @@ async def main(headless=True, keep_open=False):
 
     try:
         # --- 1. Login ---
-        print("\n--- Starting Login Process ---")
+        print(f"{get_timestamp()} --- Starting Login Process ---")
         await page.goto(LOGIN_URL)
         await page.locator("#rtPrivacyBannerAccept").click(timeout=5000)
         await page.get_by_label("Email Address").fill(USERNAME)
         await page.get_by_label("Password").fill(PASSWORD)
         await page.locator("a.button-primary:has-text('Log in')").click()
         await page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
-        print("✅ Login successful.")
+        print(f"{get_timestamp()} ✅ Login successful.")
 
         # --- 2. Process Bookings ---
-        print("\n--- Starting Booking Process ---")
+        print(f"{get_timestamp()} --- Starting Booking Process ---")
         
         # Group slots by court and date for optimized booking
         from collections import defaultdict

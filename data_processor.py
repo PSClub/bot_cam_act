@@ -6,11 +6,16 @@ import re
 import json
 import tempfile
 import os
+import time
 from datetime import datetime
 from io import StringIO
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import gspread
+
+def get_timestamp():
+    """Returns a timestamp string with 100ths of seconds."""
+    return f"[{datetime.now().strftime('%H:%M:%S.%f')[:-4]}]"
 
 def download_data_from_gsheets(sheet_id, tab_name, service_account_json):
     """
@@ -25,17 +30,17 @@ def download_data_from_gsheets(sheet_id, tab_name, service_account_json):
         pandas.DataFrame: DataFrame with the sheet data, or None if failed
     """
     try:
-        print(f"--- Downloading data from Google Sheets (Sheet ID: {sheet_id}, Tab: {tab_name}) ---")
+        print(f"{get_timestamp()} --- Downloading data from Google Sheets (Sheet ID: {sheet_id}, Tab: {tab_name}) ---")
         
         if not sheet_id or not tab_name or not service_account_json:
-            print("❌ Error: Google Sheets ID, tab name, or service account JSON not provided.")
+            print(f"{get_timestamp()} ❌ Error: Google Sheets ID, tab name, or service account JSON not provided.")
             return None
         
         # Parse the service account JSON
         try:
             credentials_info = json.loads(service_account_json)
         except json.JSONDecodeError as e:
-            print(f"❌ Error: Invalid service account JSON format: {e}")
+            print(f"{get_timestamp()} ❌ Error: Invalid service account JSON format: {e}")
             return None
         
         # Create credentials from service account info
@@ -55,22 +60,22 @@ def download_data_from_gsheets(sheet_id, tab_name, service_account_json):
         try:
             worksheet = spreadsheet.worksheet(tab_name)
         except gspread.WorksheetNotFound:
-            print(f"❌ Error: Worksheet '{tab_name}' not found in the spreadsheet.")
+            print(f"{get_timestamp()} ❌ Error: Worksheet '{tab_name}' not found in the spreadsheet.")
             available_sheets = [ws.title for ws in spreadsheet.worksheets()]
-            print(f"Available worksheets: {', '.join(available_sheets)}")
+            print(f"{get_timestamp()} Available worksheets: {', '.join(available_sheets)}")
             return None
         
         # Get all values from the worksheet
         all_values = worksheet.get_all_values()
         
         if not all_values:
-            print("❌ Error: No data found in the worksheet.")
+            print(f"{get_timestamp()} ❌ Error: No data found in the worksheet.")
             return None
         
         # Convert to DataFrame
         # Assume first row contains headers
         if len(all_values) < 2:
-            print("❌ Error: Worksheet must have at least a header row and one data row.")
+            print(f"{get_timestamp()} ❌ Error: Worksheet must have at least a header row and one data row.")
             return None
         
         headers = all_values[0]
@@ -80,18 +85,18 @@ def download_data_from_gsheets(sheet_id, tab_name, service_account_json):
         data_rows = [row for row in data_rows if any(cell.strip() for cell in row)]
         
         if not data_rows:
-            print("❌ Error: No data rows found (all rows are empty).")
+            print(f"{get_timestamp()} ❌ Error: No data rows found (all rows are empty).")
             return None
         
         df = pd.DataFrame(data_rows, columns=headers)
         
-        print(f"✅ Successfully downloaded {len(df)} rows from Google Sheets")
-        print(f"📊 Columns found: {', '.join(df.columns.tolist())}")
+        print(f"{get_timestamp()} ✅ Successfully downloaded {len(df)} rows from Google Sheets")
+        print(f"{get_timestamp()} 📊 Columns found: {', '.join(df.columns.tolist())}")
         
         return df
         
     except Exception as e:
-        print(f"❌ Error downloading from Google Sheets: {e}")
+        print(f"{get_timestamp()} ❌ Error downloading from Google Sheets: {e}")
         return None
 
 def process_booking_file(file_path, gsheet_id=None, gsheet_tab=None, service_account_json=None):
@@ -106,53 +111,53 @@ def process_booking_file(file_path, gsheet_id=None, gsheet_tab=None, service_acc
         service_account_json (str): Service account JSON for Google Sheets authentication (optional)
     """
     # Debug logging to see what we're receiving
-    print(f"🔍 Debug: gsheet_id = '{gsheet_id}'")
-    print(f"🔍 Debug: gsheet_tab = '{gsheet_tab}'")
-    print(f"🔍 Debug: service_account_json = {'Set' if service_account_json else 'Not set'}")
+    print(f"{get_timestamp()} 🔍 Debug: gsheet_id = '{gsheet_id}'")
+    print(f"{get_timestamp()} 🔍 Debug: gsheet_tab = '{gsheet_tab}'")
+    print(f"{get_timestamp()} 🔍 Debug: service_account_json = {'Set' if service_account_json else 'Not set'}")
     
     # Try Google Sheets first if configured
     if gsheet_id and gsheet_tab and service_account_json:
-        print("--- Attempting to download data from Google Sheets ---")
+        print(f"{get_timestamp()} --- Attempting to download data from Google Sheets ---")
         df = download_data_from_gsheets(gsheet_id, gsheet_tab, service_account_json)
         if df is not None:
-            print("✅ Successfully loaded data from Google Sheets")
+            print(f"{get_timestamp()} ✅ Successfully loaded data from Google Sheets")
         else:
-            print("⬇️ Google Sheets download failed, attempting local file fallback...")
+            print(f"{get_timestamp()} ⬇️ Google Sheets download failed, attempting local file fallback...")
             try:
                 df = pd.read_csv(file_path, skipinitialspace=True)
-                print("✅ Successfully loaded data from local CSV file")
+                print(f"{get_timestamp()} ✅ Successfully loaded data from local CSV file")
             except FileNotFoundError:
-                print(f"❌ Error: Neither Google Sheets nor local file '{file_path}' could be loaded.")
-                print("🔍 Please check:")
-                print("   1. Google Sheets API is enabled")
-                print("   2. Service account has access to the spreadsheet")
-                print("   3. Local CSV file exists (if using fallback)")
+                print(f"{get_timestamp()} ❌ Error: Neither Google Sheets nor local file '{file_path}' could be loaded.")
+                print(f"{get_timestamp()} 🔍 Please check:")
+                print(f"{get_timestamp()}    1. Google Sheets API is enabled")
+                print(f"{get_timestamp()}    2. Service account has access to the spreadsheet")
+                print(f"{get_timestamp()}    3. Local CSV file exists (if using fallback)")
                 return []
             except Exception as e:
-                print(f"❌ Error reading local CSV file: {e}")
+                print(f"{get_timestamp()} ❌ Error reading local CSV file: {e}")
                 return []
     else:
-        print(f"--- Processing local booking file: {file_path} ---")
+        print(f"{get_timestamp()} --- Processing local booking file: {file_path} ---")
         if not gsheet_id and not gsheet_tab and not service_account_json:
-            print("📝 Note: Google Sheets not configured. Set GSHEET_CAM_ID and GOOGLE_SERVICE_ACCOUNT_JSON environment variables to use Google Sheets.")
+            print(f"{get_timestamp()} 📝 Note: Google Sheets not configured. Set GSHEET_CAM_ID and GOOGLE_SERVICE_ACCOUNT_JSON environment variables to use Google Sheets.")
         elif not gsheet_id:
-            print("⚠️ Warning: GSHEET_CAM_ID not set. Using local file.")
+            print(f"{get_timestamp()} ⚠️ Warning: GSHEET_CAM_ID not set. Using local file.")
         elif not gsheet_tab:
-            print("⚠️ Warning: Google Sheets tab name not configured. Using local file.")
+            print(f"{get_timestamp()} ⚠️ Warning: Google Sheets tab name not configured. Using local file.")
         elif not service_account_json:
-            print("⚠️ Warning: GOOGLE_SERVICE_ACCOUNT_JSON not set. Using local file.")
+            print(f"{get_timestamp()} ⚠️ Warning: GOOGLE_SERVICE_ACCOUNT_JSON not set. Using local file.")
         
         try:
             df = pd.read_csv(file_path, skipinitialspace=True)
-            print("✅ Successfully loaded data from local CSV file")
+            print(f"{get_timestamp()} ✅ Successfully loaded data from local CSV file")
         except FileNotFoundError:
-            print(f"❌ Error: Local file '{file_path}' not found.")
-            print("🔍 Please check:")
-            print("   1. Local CSV file exists and is accessible")
-            print("   2. Or configure Google Sheets integration")
+            print(f"{get_timestamp()} ❌ Error: Local file '{file_path}' not found.")
+            print(f"{get_timestamp()} 🔍 Please check:")
+            print(f"{get_timestamp()}    1. Local CSV file exists and is accessible")
+            print(f"{get_timestamp()}    2. Or configure Google Sheets integration")
             return []
         except Exception as e:
-            print(f"❌ Error reading local CSV file: {e}")
+            print(f"{get_timestamp()} ❌ Error reading local CSV file: {e}")
             return []
     
     try:
@@ -171,10 +176,10 @@ def process_booking_file(file_path, gsheet_id=None, gsheet_tab=None, service_acc
         booking_window_df = df[df['days_ahead'].isin([33, 34, 35])].copy()
         
         if booking_window_df.empty:
-            print("No bookings found in the 33-35 day window.")
+            print(f"{get_timestamp()} No bookings found in the 33-35 day window.")
             return []
 
-        print(f"Found {len(booking_window_df)} bookings in the valid window.")
+        print(f"{get_timestamp()} Found {len(booking_window_df)} bookings in the valid window.")
 
         # 4. Sort the data
         sorted_df = booking_window_df.sort_values(by=['time', 'parsed_date', 'court_link'])
@@ -183,16 +188,16 @@ def process_booking_file(file_path, gsheet_id=None, gsheet_tab=None, service_acc
         sorted_df['booking_date_str'] = sorted_df['parsed_date'].dt.strftime('%d/%m/%Y')
         final_list = sorted_df[['court_link', 'booking_date_str', 'time']].values.tolist()
         
-        print("\n--- The following bookings will be attempted in this order: ---")
+        print(f"{get_timestamp()} --- The following bookings will be attempted in this order: ---")
         for item in final_list:
-            print(f"  - Court: {item[0].split('/')[-2]}, Date: {item[1]}, Time: {item[2]}")
-        print("------------------------------------------------------------")
+            print(f"{get_timestamp()}   - Court: {item[0].split('/')[-2]}, Date: {item[1]}, Time: {item[2]}")
+        print(f"{get_timestamp()} ------------------------------------------------------------")
         
         return final_list
 
     except FileNotFoundError:
-        print(f"❌ Error: The file '{file_path}' was not found.")
+        print(f"{get_timestamp()} ❌ Error: The file '{file_path}' was not found.")
         return []
     except Exception as e:
-        print(f"❌ An error occurred while processing the CSV file: {e}")
+        print(f"{get_timestamp()} ❌ An error occurred while processing the CSV file: {e}")
         return []

@@ -17,8 +17,10 @@ from browser_actions import (
 )
 
 def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds."""
-    return f"[{datetime.now().strftime('%H:%M:%S.%f')[:-4]}]"
+    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
+    uk_tz = pytz.timezone('Europe/London')
+    london_time = datetime.now(uk_tz)
+    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
 
 class BookingSession:
     """Represents a single booking session for one court/email combination."""
@@ -134,6 +136,7 @@ class BookingSession:
                 self.current_date = target_date
             
             # Book each slot
+            successful_slots = 0
             for slot_time in slots_to_book:
                 slot_details = (self.court_url, target_date, slot_time)
                 
@@ -143,8 +146,10 @@ class BookingSession:
                     self.successful_bookings.append(slot_details)
                     
                     # Log successful booking
+                    uk_tz = pytz.timezone('Europe/London')
+                    london_time = datetime.now(uk_tz)
                     log_entry = {
-                        'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'Timestamp': london_time.strftime('%Y-%m-%d %H:%M:%S'),
                         'Email': self.email,
                         'Court': self.court_number,
                         'Date': target_date,
@@ -152,15 +157,18 @@ class BookingSession:
                         'Status': '✅ Success',
                         'Error Details': ''
                     }
-                    await self.sheets_manager.write_booking_log(log_entry)
+                    self.sheets_manager.write_booking_log(log_entry)
                     
                     print(f"{get_timestamp()} ✅ {self.account_name} successfully booked {slot_time}")
+                    successful_slots += 1
                 else:
                     self.failed_bookings.append(slot_details)
                     
                     # Log failed booking
+                    uk_tz = pytz.timezone('Europe/London')
+                    london_time = datetime.now(uk_tz)
                     log_entry = {
-                        'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'Timestamp': london_time.strftime('%Y-%m-%d %H:%M:%S'),
                         'Email': self.email,
                         'Court': self.court_number,
                         'Date': target_date,
@@ -168,11 +176,12 @@ class BookingSession:
                         'Status': '❌ Failed',
                         'Error Details': 'Slot not available or booking failed'
                     }
-                    await self.sheets_manager.write_booking_log(log_entry)
+                    self.sheets_manager.write_booking_log(log_entry)
                     
                     print(f"{get_timestamp()} ❌ {self.account_name} failed to book {slot_time}")
             
-            return True
+            # Return True if at least one slot was booked successfully
+            return successful_slots > 0
             
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error booking slots for {self.account_name}: {e}")
@@ -355,12 +364,16 @@ class MultiSessionManager:
                 session = self.sessions[i]
                 if isinstance(result, Exception):
                     print(f"{get_timestamp()} ❌ Booking failed for {session.account_name}: {result}")
+                    # Even if the session failed, collect any failed bookings that were attempted
+                    self.all_failed_bookings.extend(session.failed_bookings)
                 elif result:
                     print(f"{get_timestamp()} ✅ Booking completed for {session.account_name}")
                     self.all_successful_bookings.extend(session.successful_bookings)
                     self.all_failed_bookings.extend(session.failed_bookings)
                 else:
                     print(f"{get_timestamp()} ❌ Booking failed for {session.account_name}")
+                    # Even if the session failed, collect any failed bookings that were attempted
+                    self.all_failed_bookings.extend(session.failed_bookings)
             
             total_successful = len(self.all_successful_bookings)
             total_failed = len(self.all_failed_bookings)
@@ -368,6 +381,14 @@ class MultiSessionManager:
             print(f"{get_timestamp()} === Booking Summary ===")
             print(f"{get_timestamp()} ✅ Successful bookings: {total_successful}")
             print(f"{get_timestamp()} ❌ Failed bookings: {total_failed}")
+            
+            # Debug: Print detailed results for each session
+            for session in self.sessions:
+                print(f"{get_timestamp()} 📊 {session.account_name}: {len(session.successful_bookings)}✅ {len(session.failed_bookings)}❌")
+                if session.successful_bookings:
+                    print(f"{get_timestamp()}   ✅ Successful: {session.successful_bookings}")
+                if session.failed_bookings:
+                    print(f"{get_timestamp()}   ❌ Failed: {session.failed_bookings}")
             
             return total_successful > 0
             
@@ -431,10 +452,20 @@ class MultiSessionManager:
     
     def get_booking_summary(self):
         """Get a summary of all booking results."""
-        return {
+        summary = {
             'total_sessions': len(self.sessions),
             'successful_bookings': len(self.all_successful_bookings),
             'failed_bookings': len(self.all_failed_bookings),
             'successful_details': self.all_successful_bookings,
             'failed_details': self.all_failed_bookings
         }
+        
+        # Debug: Print summary details
+        print(f"{get_timestamp()} 🔍 Debug - Summary data:")
+        print(f"{get_timestamp()}   Total sessions: {summary['total_sessions']}")
+        print(f"{get_timestamp()}   Successful bookings: {summary['successful_bookings']}")
+        print(f"{get_timestamp()}   Failed bookings: {summary['failed_bookings']}")
+        print(f"{get_timestamp()}   All successful: {self.all_successful_bookings}")
+        print(f"{get_timestamp()}   All failed: {self.all_failed_bookings}")
+        
+        return summary

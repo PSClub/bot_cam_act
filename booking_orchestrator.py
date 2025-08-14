@@ -11,8 +11,10 @@ from robust_parser import normalize_day_name, normalize_time, get_slots_for_day,
 from config import GSHEET_MAIN_ID, GOOGLE_SERVICE_ACCOUNT_JSON, SHOW_BROWSER
 
 def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds."""
-    return f"[{datetime.now().strftime('%H:%M:%S.%f')[:-4]}]"
+    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
+    uk_tz = pytz.timezone('Europe/London')
+    london_time = datetime.now(uk_tz)
+    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
 
 class BookingOrchestrator:
     """Orchestrates the entire multi-court booking process."""
@@ -203,8 +205,10 @@ class BookingOrchestrator:
                     print(f"{get_timestamp()}   - {date} {time}")
             
             # Log summary to Google Sheets
+            uk_tz = pytz.timezone('Europe/London')
+            london_time = datetime.now(uk_tz)
             summary_log_entry = {
-                'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'Timestamp': london_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'Email': 'SYSTEM',
                 'Court': 'ALL',
                 'Date': self.target_date.strftime('%d/%m/%Y'),
@@ -212,12 +216,73 @@ class BookingOrchestrator:
                 'Status': f"📊 Summary: {summary['successful_bookings']}✅ {summary['failed_bookings']}❌",
                 'Error Details': f"Target: {self.target_day_name}, Courts: {summary['total_sessions']}"
             }
-            await self.sheets_manager.write_booking_log(summary_log_entry)
+            self.sheets_manager.write_booking_log(summary_log_entry)
             
             print(f"{get_timestamp()} ✅ Booking summary generated and logged")
             
+            # Send email notification
+            await self.send_email_notification(summary)
+            
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error generating booking summary: {e}")
+    
+    async def send_email_notification(self, summary):
+        """Send email notification with booking results."""
+        try:
+            print(f"{get_timestamp()} --- Sending email notification ---")
+            
+            from config import SENDER_EMAIL, RECIPIENT_KYLE, RECIPIENT_INFO, GMAIL_APP_PASSWORD
+            
+            if not all([SENDER_EMAIL, RECIPIENT_KYLE, GMAIL_APP_PASSWORD]):
+                print(f"{get_timestamp()} ⚠️ Email configuration incomplete, skipping email notification")
+                return
+            
+            # Create email content
+            subject = f"Tennis Court Booking Results - {self.target_date.strftime('%d/%m/%Y')}"
+            
+            body = f"""
+🎾 Tennis Court Booking Results
+
+📅 Date: {self.target_date.strftime('%d/%m/%Y')} ({self.target_day_name})
+🏟️ Courts: {summary['total_sessions']}
+✅ Successful Bookings: {summary['successful_bookings']}
+❌ Failed Bookings: {summary['failed_bookings']}
+
+📋 Summary:
+- Target Date: {self.target_date.strftime('%d/%m/%Y')}
+- Day of Week: {self.target_day_name}
+- Total Courts: {summary['total_sessions']}
+- Slots Attempted: {len(self.slots_to_book)}
+
+This is an automated notification from the Tennis Court Booking System.
+            """.strip()
+            
+            # Send email using Gmail SMTP
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+            
+            msg = MIMEMultipart()
+            msg['From'] = SENDER_EMAIL
+            msg['To'] = RECIPIENT_KYLE
+            msg['Subject'] = subject
+            
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Connect to Gmail SMTP
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+            
+            # Send email
+            text = msg.as_string()
+            server.sendmail(SENDER_EMAIL, RECIPIENT_KYLE, text)
+            server.quit()
+            
+            print(f"{get_timestamp()} ✅ Email notification sent successfully")
+            
+        except Exception as e:
+            print(f"{get_timestamp()} ❌ Error sending email notification: {e}")
 
 async def main():
     """Main function to run the booking orchestrator."""

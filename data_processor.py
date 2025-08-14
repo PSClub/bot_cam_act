@@ -7,6 +7,7 @@ import json
 import tempfile
 import os
 import time
+import pytz
 from datetime import datetime
 from io import StringIO
 from google.oauth2 import service_account
@@ -14,8 +15,10 @@ from googleapiclient.discovery import build
 import gspread
 
 def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds."""
-    return f"[{datetime.now().strftime('%H:%M:%S.%f')[:-4]}]"
+    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
+    uk_tz = pytz.timezone('Europe/London')
+    london_time = datetime.now(uk_tz)
+    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
 
 def download_data_from_gsheets(sheet_id, tab_name, service_account_json):
     """

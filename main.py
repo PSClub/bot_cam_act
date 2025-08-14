@@ -10,9 +10,12 @@ import sys
 from booking_orchestrator import main as booking_main
 
 def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds."""
+    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
     from datetime import datetime
-    return f"[{datetime.now().strftime('%H:%M:%S.%f')[:-4]}]"
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+    london_time = datetime.now(uk_tz)
+    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
 
 async def main():
     """Main function to run the multi-court booking system."""

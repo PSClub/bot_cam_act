@@ -13,9 +13,12 @@ from robust_parser import test_robust_parser, normalize_day_name, normalize_time
 from config import SHOW_BROWSER
 
 def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds."""
+    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
     from datetime import datetime
-    return f"[{datetime.now().strftime('%H:%M:%S.%f')[:-4]}]"
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+    london_time = datetime.now(uk_tz)
+    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
 
 def test_environment_setup():
     """Test the environment setup for multi-court booking."""

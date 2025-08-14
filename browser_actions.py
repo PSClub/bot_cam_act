@@ -9,8 +9,10 @@ from datetime import datetime
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds."""
-    return f"[{datetime.now().strftime('%H:%M:%S.%f')[:-4]}]"
+    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
+    uk_tz = pytz.timezone('Europe/London')
+    london_time = datetime.now(uk_tz)
+    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
 
 # --- Updated Screenshot Helper Function ---
 async def take_screenshot(page, reason, slot_details=None):

@@ -6,14 +6,17 @@ This script will create a new Google Sheets document with the required structure
 
 import os
 import json
+import pytz
 from datetime import datetime
 from google.oauth2 import service_account
 import gspread
 from gspread.exceptions import APIError
 
 def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds."""
-    return f"[{datetime.now().strftime('%H:%M:%S.%f')[:-4]}]"
+    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
+    uk_tz = pytz.timezone('Europe/London')
+    london_time = datetime.now(uk_tz)
+    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
 
 def create_sheets_template(service_account_json):
     """
@@ -42,7 +45,9 @@ def create_sheets_template(service_account_json):
         gc = gspread.authorize(credentials)
         
         # Create new spreadsheet
-        spreadsheet_title = f"Tennis Court Booking System - {datetime.now().strftime('%Y-%m-%d')}"
+        uk_tz = pytz.timezone('Europe/London')
+    london_time = datetime.now(uk_tz)
+    spreadsheet_title = f"Tennis Court Booking System - {london_time.strftime('%Y-%m-%d')}"
         spreadsheet = gc.create(spreadsheet_title)
         
         print(f"{get_timestamp()} ✅ Created new spreadsheet: {spreadsheet_title}")
@@ -145,8 +150,10 @@ def create_sheets_template(service_account_json):
         })
         
         # Add a sample log entry
+        uk_tz = pytz.timezone('Europe/London')
+        london_time = datetime.now(uk_tz)
         sample_log = [
-            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            london_time.strftime('%Y-%m-%d %H:%M:%S'),
             "test@example.com",
             "Court 1",
             "01/01/2024",

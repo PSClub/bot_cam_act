@@ -33,7 +33,7 @@ def setup_environment():
     print(f"{get_timestamp()} 🔧 STEP 1: Google Sheets Configuration")
     print(f"{get_timestamp()} You need to set these environment variables:")
     print()
-    print(f"{get_timestamp()} GSHEET_MAIN_ID")
+    print(f"{get_timestamp()} GSHEET_CAM_ID")
     print(f"{get_timestamp()}   - This is your Google Sheets file ID")
     print(f"{get_timestamp()}   - Get it from the URL: https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit")
     print(f"{get_timestamp()}   - Example: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms")
@@ -104,7 +104,7 @@ def setup_environment():
     print()
     
     required_vars = [
-        'GSHEET_MAIN_ID',
+        'GSHEET_CAM_ID',
         'GOOGLE_SERVICE_ACCOUNT_JSON',
         'MOTHER_CAM_EMAIL_ADDRESS',
         'MOTHER_CAM_PASSWORD',
@@ -152,11 +152,11 @@ def test_service_account_access():
     print(f"{get_timestamp()} --------------------------------")
     
     # Check if we have the required variables
-    sheet_id = os.environ.get('GSHEET_MAIN_ID')
+    sheet_id = os.environ.get('GSHEET_CAM_ID')
     service_account_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
     
     if not sheet_id or not service_account_json:
-        print(f"{get_timestamp()} ❌ Missing GSHEET_MAIN_ID or GOOGLE_SERVICE_ACCOUNT_JSON")
+        print(f"{get_timestamp()} ❌ Missing GSHEET_CAM_ID or GOOGLE_SERVICE_ACCOUNT_JSON")
         print(f"{get_timestamp()} Please set these environment variables first")
         return False
     
@@ -206,7 +206,7 @@ def main():
     print()
     
     # Test service account access if variables are set
-    if os.environ.get('GSHEET_MAIN_ID') and os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON'):
+    if os.environ.get('GSHEET_CAM_ID') and os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON'):
         print(f"{get_timestamp()} 🔧 Testing Service Account Access...")
         test_service_account_access()
     else:

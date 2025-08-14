@@ -17,11 +17,11 @@ def test_multi_court_configuration():
     
     # Check environment variables
     required_vars = [
-        'GSHEET_MAIN_ID',
+        'GSHEET_CAM_ID',
         'GOOGLE_SERVICE_ACCOUNT_JSON',
         'MOTHER_CAM_EMAIL_ADDRESS',
         'MOTHER_CAM_PASSWORD',
-        'FATHER_CAM_EMAIL_ADDRESS', 
+        'FATHER_CAM_EMAIL_ADDRESS',
         'FATHER_CAM_PASSWORD',
         'BRUCE_CAM_EMAIL_ADDRESS',
         'BRUCE_CAM_PASSWORD'

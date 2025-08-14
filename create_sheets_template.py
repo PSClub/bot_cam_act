@@ -168,7 +168,7 @@ def create_sheets_template(service_account_json):
         print(f"\n{get_timestamp()} 🎉 Google Sheets template created successfully!")
         print(f"{get_timestamp()} 📋 Next steps:")
         print(f"{get_timestamp()}   1. Copy the Spreadsheet ID: {spreadsheet.id}")
-        print(f"{get_timestamp()}   2. Set the GSHEET_MAIN_ID environment variable")
+        print(f"{get_timestamp()}   2. Set the GSHEET_CAM_ID environment variable")
         print(f"{get_timestamp()}   3. Update the email addresses in the configuration sheet")
         print(f"{get_timestamp()}   4. Test the connection with test_sheets_setup.py")
         

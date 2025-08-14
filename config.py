@@ -20,7 +20,7 @@ BOOKING_FILE_PATH = 'ca_lif_booking_dates.csv'
 # --- Google Sheets Configuration ---
 # Google Sheets ID for the multi-court booking system
 # Get this from the shareable link: https://docs.google.com/spreadsheets/d/SHEET_ID/edit
-GSHEET_MAIN_ID = os.environ.get("GSHEET_MAIN_ID")
+GSHEET_MAIN_ID = os.environ.get("GSHEET_CAM_ID")
 
 # Google Service Account credentials (JSON content as string)
 # Create a service account in Google Cloud Console and download the JSON key

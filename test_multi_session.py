@@ -24,11 +24,11 @@ def test_environment_setup():
     
     # Check environment variables
     required_vars = [
-        'GSHEET_MAIN_ID',
+        'GSHEET_CAM_ID',
         'GOOGLE_SERVICE_ACCOUNT_JSON',
         'MOTHER_CAM_EMAIL_ADDRESS',
         'MOTHER_CAM_PASSWORD',
-        'FATHER_CAM_EMAIL_ADDRESS', 
+        'FATHER_CAM_EMAIL_ADDRESS',
         'FATHER_CAM_PASSWORD',
         'BRUCE_CAM_EMAIL_ADDRESS',
         'BRUCE_CAM_PASSWORD'
@@ -61,7 +61,7 @@ async def test_multi_session_initialization():
     print("\n=== Testing Multi-Session Initialization ===")
     
     # Check environment variables directly
-    gsheet_id = os.environ.get('GSHEET_MAIN_ID')
+    gsheet_id = os.environ.get('GSHEET_CAM_ID')
     service_account_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
     
     if not gsheet_id or not service_account_json:
@@ -158,7 +158,7 @@ async def test_google_sheets_integration():
     print("\n=== Testing Google Sheets Integration ===")
     
     # Check environment variables directly
-    gsheet_id = os.environ.get('GSHEET_MAIN_ID')
+    gsheet_id = os.environ.get('GSHEET_CAM_ID')
     service_account_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
     
     if not gsheet_id or not service_account_json:

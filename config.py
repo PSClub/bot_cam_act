@@ -45,6 +45,7 @@ COURT_3_URL = "https://camdenactive.camden.gov.uk/courses/detail/177/lincoln-s-i
 SENDER_EMAIL = os.environ.get("KYLE_EMAIL_ADDRESS")
 RECIPIENT_KYLE = os.environ.get("KYLE_EMAIL_ADDRESS")
 RECIPIENT_INFO = os.environ.get("INFO_EMAIL_ADDRESS")
+IT_EMAIL_ADDRESS = os.environ.get("IT_EMAIL_ADDRESS")
 
 # --- Payment Card Details ---
 # These will be fetched from GitHub repository secrets for payment processing

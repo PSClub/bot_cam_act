@@ -469,3 +469,21 @@ class MultiSessionManager:
         print(f"{get_timestamp()}   All failed: {self.all_failed_bookings}")
         
         return summary
+    
+    def get_session_details(self):
+        """Get detailed information about each session's booking attempts."""
+        session_details = []
+        
+        for session in self.sessions:
+            session_info = {
+                'account_name': session.account_name,
+                'email': session.email,
+                'court_number': session.court_number,
+                'court_url': session.court_url,
+                'successful_bookings': session.successful_bookings,
+                'failed_bookings': session.failed_bookings,
+                'total_attempts': len(session.successful_bookings) + len(session.failed_bookings)
+            }
+            session_details.append(session_info)
+        
+        return session_details

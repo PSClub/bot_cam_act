@@ -188,6 +188,48 @@ class SheetsManager:
             print(f"{get_timestamp()} ❌ Error writing to booking log: {e}")
             raise
     
+    def read_booking_log(self, limit=50):
+        """
+        Read recent entries from the Booking Log sheet.
+        
+        Args:
+            limit (int): Maximum number of recent entries to retrieve
+            
+        Returns:
+            list: List of log entries as dictionaries
+        """
+        try:
+            print(f"{get_timestamp()} --- Reading Booking Log ---")
+            
+            worksheet = self.spreadsheet.worksheet("Booking Log")
+            all_values = worksheet.get_all_values()
+            
+            if len(all_values) <= 1:  # Only header or empty
+                return []
+            
+            # Get headers and data rows
+            headers = all_values[0]
+            data_rows = all_values[1:limit+1] if len(all_values) > 1 else []
+            
+            # Convert to list of dictionaries
+            log_entries = []
+            for row in data_rows:
+                if len(row) >= len(headers):
+                    entry = {}
+                    for i, header in enumerate(headers):
+                        entry[header] = row[i] if i < len(row) else ''
+                    log_entries.append(entry)
+            
+            print(f"{get_timestamp()} ✅ Successfully read {len(log_entries)} log entries")
+            return log_entries
+            
+        except WorksheetNotFound:
+            print(f"{get_timestamp()} ❌ Booking log sheet not found")
+            return []
+        except Exception as e:
+            print(f"{get_timestamp()} ❌ Error reading booking log: {e}")
+            return []
+    
     def update_booking_status(self, court, date, time, status, error_details=""):
         """
         Update the status of a specific booking in the schedule sheets.

@@ -34,7 +34,7 @@ jobs:
     - name: Run booking script
       # The script will get its credentials and payment details from repository secrets.
       env:
-        # Authentication credentials (matching your current setup)
+        # Authentication credentials and email addresses
         BRUCE_CAM_EMAIL_ADDRESS: ${{ vars.BRUCE_CAM_EMAIL_ADDRESS }}
         BRUCE_CAM_PASSWORD: ${{ secrets.BRUCE_CAM_PASSWORD }}
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -46,7 +46,6 @@ jobs:
         HELLO_EMAIL_ADDRESS: ${{ vars.HELLO_EMAIL_ADDRESS }}
         FATHER_CAM_EMAIL_ADDRESS: ${{ vars.FATHER_CAM_EMAIL_ADDRESS }}
         MOTHER_CAM_EMAIL_ADDRESS: ${{ vars.MOTHER_CAM_EMAIL_ADDRESS }}
-        BRUCE_CAM_EMAIL_ADDRESS: ${{ vars.BRUCE_CAM_EMAIL_ADDRESS }}
         
         # Card payment details (will be added as secrets)
         LB_CARD_NUMBER: ${{ secrets.LB_CARD_NUMBER }}
@@ -67,7 +66,6 @@ jobs:
         # Multi-Court Email Account Passwords
         MOTHER_CAM_PASSWORD: ${{ secrets.MOTHER_CAM_PASSWORD }}
         FATHER_CAM_PASSWORD: ${{ secrets.FATHER_CAM_PASSWORD }}
-        BRUCE_CAM_PASSWORD: ${{ secrets.BRUCE_CAM_PASSWORD }}
         
         # Production mode settings
         PRODUCTION_MODE: "true"

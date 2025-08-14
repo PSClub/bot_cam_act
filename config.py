@@ -18,16 +18,28 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 BOOKING_FILE_PATH = 'ca_lif_booking_dates.csv'
 
 # --- Google Sheets Configuration ---
-# Google Sheets ID for the booking data
+# Google Sheets ID for the multi-court booking system
 # Get this from the shareable link: https://docs.google.com/spreadsheets/d/SHEET_ID/edit
-GSHEET_CAM_ID = os.environ.get("GSHEET_CAM_ID")
-
-# Google Sheets tab/worksheet name containing the booking data
-GSHEET_TAB_NAME = "camden_active_booking_dates"
+GSHEET_MAIN_ID = os.environ.get("GSHEET_MAIN_ID")
 
 # Google Service Account credentials (JSON content as string)
 # Create a service account in Google Cloud Console and download the JSON key
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+
+# --- Multi-Court Email Accounts ---
+# These will be fetched from GitHub repository secrets when run as an Action.
+# The names must match the secret names you create in GitHub.
+MOTHER_EMAIL = os.environ.get("MOTHER_CAM_EMAIL_ADDRESS")
+MOTHER_PASSWORD = os.environ.get("MOTHER_CAM_PASSWORD")
+FATHER_EMAIL = os.environ.get("FATHER_CAM_EMAIL_ADDRESS")
+FATHER_PASSWORD = os.environ.get("FATHER_CAM_PASSWORD")
+BRUCE_EMAIL = os.environ.get("BRUCE_CAM_EMAIL_ADDRESS")
+BRUCE_PASSWORD = os.environ.get("BRUCE_CAM_PASSWORD")
+
+# --- Court URLs ---
+COURT_1_URL = "https://camdenactive.camden.gov.uk/courses/detail/171/lincoln-s-inn-fields-tennis-court-1/"
+COURT_2_URL = "https://camdenactive.camden.gov.uk/courses/detail/176/lincoln-s-inn-fields-tennis-court-2/"
+COURT_3_URL = "https://camdenactive.camden.gov.uk/courses/detail/177/lincoln-s-inn-fields-tennis-court-3/"
 
 # --- Email Settings ---
 SENDER_EMAIL = os.environ.get("KYLE_EMAIL_ADDRESS")

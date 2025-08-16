@@ -76,13 +76,9 @@ class BookingSession:
         }
         self.screenshots_taken.append(screenshot_info)
     
-    async def initialize_browser(self, headless=None):
-        """Initialize the browser session."""
+    async def initialize_browser(self, headless=os.environ.get('HEADLESS_MODE', 'True').lower() == 'true'):
+        """Initialize the browser session with simplified headless parameter logic."""
         try:
-            # Use environment variable if headless not specified
-            if headless is None:
-                headless = os.environ.get('HEADLESS_MODE', 'True').lower() == 'true'
-                
             self.log_message(f"{get_timestamp()} --- Initializing browser for {self.account_name} ({self.court_number}) ---")
             
             self.playwright = await async_playwright().start()
@@ -168,17 +164,15 @@ class BookingSession:
                     self.successful_bookings.append(slot_details)
                     
                     # Log successful booking
-                    from utils import get_london_datetime
-                    london_time = get_london_datetime()
-                    log_entry = {
-                        'Timestamp': london_time.strftime('%Y-%m-%d %H:%M:%S'),
-                        'Email': self.email,
-                        'Court': self.court_number,
-                        'Date': target_date,
-                        'Time': slot_time,
-                        'Status': '✅ Success',
-                        'Error Details': ''
-                    }
+                    # Create log entry for successful booking using helper function
+                    log_entry = self.sheets_manager.create_log_entry(
+                        email=self.email,
+                        court=self.court_number,
+                        date=target_date,
+                        time=slot_time,
+                        status='✅ Success',
+                        error_details=''
+                    )
                     self.sheets_manager.write_booking_log(log_entry)
                     
                     print(f"{get_timestamp()} ✅ {self.account_name} successfully booked {slot_time}")
@@ -186,18 +180,15 @@ class BookingSession:
                 else:
                     self.failed_bookings.append(slot_details)
                     
-                    # Log failed booking
-                    from utils import get_london_datetime
-                    london_time = get_london_datetime()
-                    log_entry = {
-                        'Timestamp': london_time.strftime('%Y-%m-%d %H:%M:%S'),
-                        'Email': self.email,
-                        'Court': self.court_number,
-                        'Date': target_date,
-                        'Time': slot_time,
-                        'Status': '❌ Failed',
-                        'Error Details': 'Slot not available or booking failed'
-                    }
+                    # Create log entry for failed booking using helper function
+                    log_entry = self.sheets_manager.create_log_entry(
+                        email=self.email,
+                        court=self.court_number,
+                        date=target_date,
+                        time=slot_time,
+                        status='❌ Failed',
+                        error_details='Slot not available or booking failed'
+                    )
                     self.sheets_manager.write_booking_log(log_entry)
                     
                     print(f"{get_timestamp()} ❌ {self.account_name} failed to book {slot_time}")
@@ -381,11 +372,29 @@ class MultiSessionManager:
             ]
             booking_results = await asyncio.gather(*booking_tasks, return_exceptions=True)
             
-            # Collect results
+            # Collect results with more granular error handling
             for i, result in enumerate(booking_results):
                 session = self.sessions[i]
                 if isinstance(result, Exception):
-                    print(f"{get_timestamp()} ❌ Booking failed for {session.account_name}: {result}")
+                    # Handle specific exception types for better debugging
+                    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+                    
+                    if isinstance(result, PlaywrightTimeoutError):
+                        print(f"{get_timestamp()} ❌ Booking timeout for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 This might be due to slow page loading or network issues")
+                    elif isinstance(result, ConnectionError):
+                        print(f"{get_timestamp()} ❌ Network connection failed for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 Check internet connection and try again")
+                    elif isinstance(result, ValueError):
+                        print(f"{get_timestamp()} ❌ Invalid data for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 Check booking date/time format or court configuration")
+                    elif isinstance(result, PermissionError):
+                        print(f"{get_timestamp()} ❌ Permission denied for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 Check browser permissions or authentication")
+                    else:
+                        print(f"{get_timestamp()} ❌ Unexpected error for {session.account_name}: {type(result).__name__}: {result}")
+                        print(f"{get_timestamp()}   💡 This may require manual investigation")
+                    
                     # Even if the session failed, collect any failed bookings that were attempted
                     self.all_failed_bookings.extend(session.failed_bookings)
                 elif result:

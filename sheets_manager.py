@@ -3,11 +3,13 @@
 
 import json
 import pandas as pd
+import time
 from datetime import datetime
 from google.oauth2 import service_account
 import gspread
-from gspread.exceptions import WorksheetNotFound, APIError
-from utils import get_timestamp
+from gspread.exceptions import WorksheetNotFound, APIError, SpreadsheetNotFound
+import requests
+from utils import get_timestamp, get_london_datetime
 
 class SheetsManager:
     """Manages all Google Sheets operations for the booking system."""
@@ -54,6 +56,80 @@ class SheetsManager:
             print(f"{get_timestamp()} ❌ Failed to connect to Google Sheets: {e}")
             raise
     
+    def _retry_api_call(self, func, *args, max_retries=3, delay=1, **kwargs):
+        """
+        Retry wrapper for Google Sheets API calls with exponential backoff.
+        Handles network issues, rate limiting, and temporary API errors.
+        
+        Args:
+            func: Function to call
+            *args: Function arguments
+            max_retries (int): Maximum number of retry attempts
+            delay (float): Initial delay between retries in seconds
+            **kwargs: Function keyword arguments
+            
+        Returns:
+            Function result
+            
+        Raises:
+            Exception: If all retries are exhausted
+        """
+        last_exception = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+                
+            except (requests.exceptions.ConnectionError, 
+                    requests.exceptions.Timeout,
+                    requests.exceptions.RequestException) as e:
+                last_exception = e
+                if attempt < max_retries:
+                    wait_time = delay * (2 ** attempt)  # Exponential backoff
+                    print(f"{get_timestamp()} 🔄 Network error (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                    print(f"{get_timestamp()}   Retrying in {wait_time:.1f} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"{get_timestamp()} ❌ All network retry attempts failed")
+                    
+            except APIError as e:
+                last_exception = e
+                # Handle specific Google Sheets API errors
+                if "RATE_LIMIT_EXCEEDED" in str(e) or "quota" in str(e).lower():
+                    if attempt < max_retries:
+                        wait_time = delay * (2 ** attempt) + 5  # Extra delay for rate limits
+                        print(f"{get_timestamp()} 🔄 Rate limit exceeded (attempt {attempt + 1}/{max_retries + 1})")
+                        print(f"{get_timestamp()}   Waiting {wait_time:.1f} seconds before retry...")
+                        time.sleep(wait_time)
+                    else:
+                        print(f"{get_timestamp()} ❌ Rate limit retry attempts exhausted")
+                elif "INTERNAL_ERROR" in str(e) or "backend" in str(e).lower():
+                    if attempt < max_retries:
+                        wait_time = delay * (2 ** attempt)
+                        print(f"{get_timestamp()} 🔄 Google Sheets internal error (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                        print(f"{get_timestamp()}   Retrying in {wait_time:.1f} seconds...")
+                        time.sleep(wait_time)
+                    else:
+                        print(f"{get_timestamp()} ❌ All API retry attempts failed")
+                else:
+                    # Don't retry for other API errors (e.g., permission denied, not found)
+                    print(f"{get_timestamp()} ❌ Non-retryable API error: {e}")
+                    raise
+                    
+            except (SpreadsheetNotFound, WorksheetNotFound) as e:
+                # Don't retry for not found errors
+                print(f"{get_timestamp()} ❌ Resource not found: {e}")
+                raise
+                
+            except Exception as e:
+                # Don't retry for unexpected errors
+                print(f"{get_timestamp()} ❌ Unexpected error in API call: {e}")
+                raise
+        
+        # If we get here, all retries were exhausted
+        print(f"{get_timestamp()} ❌ Failed after {max_retries + 1} attempts. Last error: {last_exception}")
+        raise last_exception
+    
     def _read_worksheet_to_dicts(self, worksheet_name, description=""):
         """
         Private helper method to read a worksheet and convert to list of dictionaries.
@@ -73,8 +149,8 @@ class SheetsManager:
         try:
             print(f"{get_timestamp()} --- Reading {worksheet_name} Sheet{' (' + description + ')' if description else ''} ---")
             
-            worksheet = self.spreadsheet.worksheet(worksheet_name)
-            all_values = worksheet.get_all_values()
+            worksheet = self._retry_api_call(self.spreadsheet.worksheet, worksheet_name)
+            all_values = self._retry_api_call(worksheet.get_all_values)
             
             if len(all_values) < 2:
                 raise ValueError(f"{worksheet_name} sheet must have at least a header row and one data row")
@@ -109,6 +185,36 @@ class SheetsManager:
             print(f"{get_timestamp()} ❌ Error reading {worksheet_name} sheet: {e}")
             raise
     
+    def create_log_entry(self, email, court, date, time, status, error_details=""):
+        """
+        Helper function to create a standardized log entry dictionary.
+        Reduces code duplication when creating log entries throughout the application.
+        
+        Args:
+            email (str): Email address of the account
+            court (str): Court identifier (e.g., "Court 1", "Court 2")
+            date (str): Booking date in DD/MM/YYYY format
+            time (str): Booking time in HHMM format
+            status (str): Status of the booking attempt
+            error_details (str): Optional error details for failed bookings
+            
+        Returns:
+            dict: Standardized log entry dictionary ready for writing to Google Sheets
+        """
+        from utils import get_london_datetime
+        
+        log_entry = {
+            'Timestamp': get_london_datetime().strftime('%Y-%m-%d %H:%M:%S'),
+            'Email': str(email),
+            'Court': str(court),
+            'Date': str(date),
+            'Time': str(time),
+            'Status': str(status),
+            'Error Details': str(error_details)
+        }
+        
+        return log_entry
+    
     def read_configuration_sheet(self):
         """
         Read the Account & Court Configuration sheet.
@@ -138,7 +244,7 @@ class SheetsManager:
         try:
             print(f"{get_timestamp()} --- Writing to Booking Log ---")
             
-            worksheet = self.spreadsheet.worksheet("Booking Log")
+            worksheet = self._retry_api_call(self.spreadsheet.worksheet, "Booking Log")
             
             # Prepare the row data
             row_data = [
@@ -152,7 +258,7 @@ class SheetsManager:
             ]
             
             # Insert at row 2 (after header)
-            worksheet.insert_row(row_data, 2)
+            self._retry_api_call(worksheet.insert_row, row_data, 2)
             
             print(f"{get_timestamp()} ✅ Successfully logged booking entry")
             
@@ -178,8 +284,8 @@ class SheetsManager:
         try:
             print(f"{get_timestamp()} --- Reading Booking Log (limit={limit}, offset={offset}, get_all={get_all}) ---")
             
-            worksheet = self.spreadsheet.worksheet("Booking Log")
-            all_values = worksheet.get_all_values()
+            worksheet = self._retry_api_call(self.spreadsheet.worksheet, "Booking Log")
+            all_values = self._retry_api_call(worksheet.get_all_values)
             
             if len(all_values) <= 1:  # Only header or empty
                 return {
@@ -243,81 +349,7 @@ class SheetsManager:
                 'next_offset': 0
             }
     
-    def update_booking_status(self, court, date, time, status, error_details=""):
-        """
-        Update the status of a specific booking in the schedule sheets.
-        
-        Args:
-            court (str): Court number (e.g., "Court 1")
-            date (str): Booking date in DD/MM/YYYY format
-            time (str): Booking time in HHMM format
-            status (str): New status (e.g., "✅ Success", "❌ Failed")
-            error_details (str): Error details if applicable
-        """
-        try:
-            print(f"{get_timestamp()} --- Updating Booking Status ---")
-            
-            # Determine which schedule sheet to update based on the day
-            date_obj = datetime.strptime(date, "%d/%m/%Y")
-            day_name = date_obj.strftime('%A')
-            
-            if day_name in ['Tuesday', 'Thursday']:
-                worksheet_name = "Weekday Bookings (Feb-Aug)"
-            elif day_name in ['Saturday', 'Sunday']:
-                worksheet_name = "Weekend Bookings (All Year)"
-            else:
-                print(f"{get_timestamp()} ⚠️ No schedule sheet for {day_name}")
-                return
-            
-            worksheet = self.spreadsheet.worksheet(worksheet_name)
-            all_values = worksheet.get_all_values()
-            
-            # Find the row to update
-            target_row = None
-            for i, row in enumerate(all_values):
-                if len(row) >= 3:
-                    row_day = row[0] if row[0] else ""
-                    row_time = row[1] if row[1] else ""
-                    
-                    # Normalize day and time for comparison
-                    from robust_parser import normalize_day_name, normalize_time
-                    
-                    try:
-                        normalized_row_day = normalize_day_name(row_day)
-                        normalized_row_time = normalize_time(row_time)
-                        normalized_target_day = normalize_day_name(day_name)
-                        normalized_target_time = normalize_time(time)
-                        
-                        if (normalized_row_day == normalized_target_day and 
-                            normalized_row_time == normalized_target_time):
-                            target_row = i + 1  # Convert to 1-based index
-                            break
-                    except ValueError:
-                        continue
-            
-            if target_row:
-                # Find the court column
-                headers = all_values[0]
-                court_column = None
-                for i, header in enumerate(headers):
-                    if court in header:
-                        court_column = i + 1  # Convert to 1-based index
-                        break
-                
-                if court_column:
-                    # Update the cell
-                    cell_address = f"{chr(64 + court_column)}{target_row}"  # Convert to A1 notation
-                    worksheet.update(cell_address, status)
-                    print(f"{get_timestamp()} ✅ Updated {court} status to {status}")
-                else:
-                    print(f"{get_timestamp()} ⚠️ Court column not found for {court}")
-            else:
-                print(f"{get_timestamp()} ⚠️ Schedule row not found for {day_name} {time}")
-                
-        except WorksheetNotFound:
-            print(f"{get_timestamp()} ❌ Schedule sheet not found")
-        except Exception as e:
-            print(f"{get_timestamp()} ❌ Error updating booking status: {e}")
+
     
     def get_sheet_info(self):
         """

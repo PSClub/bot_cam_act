@@ -1,14 +1,17 @@
-# bot_cam_act
+# 🎾 Multi-Court Tennis Booking Bot for Camden Active
 
-An automated tennis court booking bot for Camden Active that can read booking data from Google Drive.
+An advanced automated tennis court booking system that manages multiple courts simultaneously with comprehensive Google Sheets integration, robust email notifications, and intelligent scheduling.
 
-## Features
+## ✨ Features
 
-- **Automated Court Booking**: Books tennis court slots automatically
-- **Google Sheets Integration**: Reads booking data directly from Google Sheets in real-time
-- **Fallback Support**: Falls back to local CSV files if Google Sheets is unavailable
-- **Email Reporting**: Sends detailed reports with booking results
-- **Strategic Timing**: Optimized for midnight slot releases
+- **🏟️ Multi-Court Booking**: Books three tennis courts concurrently with different email accounts
+- **📊 Google Sheets Integration**: Dynamic configuration and comprehensive logging via Google Sheets
+- **📧 Smart Email System**: Detailed session reports to IT and summary emails to management
+- **⏰ Strategic Timing**: Optimized for midnight slot releases (35 days in advance)
+- **🔄 Robust Error Handling**: Network resilience with retry logic and specific exception handling
+- **📸 Screenshot Capture**: Automatic screenshots for debugging and verification
+- **🌍 Timezone Aware**: All operations in London UK timezone
+- **🧪 Comprehensive Testing**: Full test suite with edge case coverage
 
 ## Setup
 
@@ -143,13 +146,69 @@ python main.py --headless
 
 The bot automatically filters bookings to only attempt slots that are 33-35 days in the future, as this is typically when new slots become available.
 
-## How It Works
+## 🏗️ System Architecture
 
-1. **Data Source**: The bot first attempts to read data from the Google Sheets tab "camden_active_booking_dates"
-2. **Fallback**: If Google Sheets is not configured or fails, it falls back to the local CSV file
-3. **Processing**: The data is cleaned, filtered, and sorted
-4. **Automation**: The bot uses Playwright to navigate the booking website and make reservations
-5. **Reporting**: Results are logged and optionally emailed with screenshots
+### Core Components
+
+```
+📊 Google Sheets ←→ 📋 SheetsManager ←→ 🎯 BookingOrchestrator
+                                              ↓
+                    📧 EmailManager ←←←←← 🎭 MultiSessionManager
+                                              ↓
+                                      🎮 BookingSession (×3)
+                                              ↓
+                                      🌐 Browser Actions (Playwright)
+```
+
+### How It Works
+
+1. **📋 Configuration Loading**
+   - Reads court and account configuration from "Account & Court Configuration" sheet
+   - Loads booking schedule from "Booking Schedule" sheet
+   - Validates all required environment variables
+
+2. **📅 Dynamic Scheduling**
+   - Calculates target date (today + 35 days)
+   - Determines which slots to book based on target day of week
+   - Matches target day against schedule table entries
+
+3. **🎭 Concurrent Session Management**
+   - Initializes three browser sessions simultaneously:
+     - Mother → Court 1 (171)
+     - Father → Court 2 (176) 
+     - Bruce → Court 3 (177)
+   - Each session runs independently with its own browser instance
+
+4. **🎮 Booking Process (Per Session)**
+   - Navigate to court booking page
+   - Login with account credentials
+   - Navigate to target date (35 days ahead)
+   - Attempt to book all available slots for that day
+   - Capture screenshots at each step
+   - Log all terminal output with timestamps
+
+5. **📊 Comprehensive Logging**
+   - Each slot attempt logged to Google Sheets individually
+   - Success/failure status with error details
+   - Real-time updates during booking process
+
+6. **📧 Multi-Tier Email Notifications**
+   - **IT Emails**: One detailed email per court session to `IT_EMAIL_ADDRESS`
+     - Complete terminal logs with timestamps
+     - All screenshots taken during process
+     - Detailed session information
+   - **Summary Email**: Combined overview to `INFO_EMAIL_ADDRESS` + `KYLE_EMAIL_ADDRESS`
+     - Slot-by-slot booking table
+     - Recent Google Sheets log entries
+     - High-level statistics
+
+### 🎯 Smart Features
+
+- **⏰ Midnight Detection**: Automatically waits until 00:00:00 London time if within 10 minutes
+- **🔄 Network Resilience**: Exponential backoff retry for Google Sheets API calls
+- **📸 Auto-Screenshots**: Captures evidence at key booking steps
+- **🌍 Timezone Consistency**: All timestamps in London UK timezone
+- **🎨 Flexible Input**: Robust parsing of day names ("sat" → "Saturday") and times ("8pm" → "2000")
 
 ## Google Sheets Integration Benefits
 
@@ -160,33 +219,210 @@ The bot automatically filters bookings to only attempt slots that are 33-35 days
 - **Accessibility**: Edit from anywhere with a web browser
 - **Live Data**: Changes are immediately available to the bot on next run
 
-## Troubleshooting
+## 🧪 Testing
+
+### Running the Test Suite
+
+The system includes comprehensive tests for all major components:
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test files
+python tests/test_robust_parser.py
+python tests/test_midnight_function.py
+python tests/test_gsheets.py
+
+# Run email functionality test
+python tests/test_email_functionality.py
+```
+
+### Test Coverage
+
+#### 🔤 Parser Tests (`tests/test_robust_parser.py`)
+Tests robust input parsing for user-friendly data entry:
+
+```bash
+# Example test cases:
+# Day names: "sat" → "Saturday", "tue" → "Tuesday"
+# Times: "8am" → "0800", "4pm" → "1600", "18:00" → "1800"
+# Edge cases: Invalid inputs, format variations
+python tests/test_robust_parser.py
+```
+
+#### ⏰ Midnight Function Tests (`tests/test_midnight_function.py`)
+Tests the critical midnight waiting functionality:
+
+```bash
+# Tests countdown timing accuracy
+# Tests midnight detection logic
+# Tests timezone handling
+python tests/test_midnight_function.py
+```
+
+#### 📊 Google Sheets Tests (`tests/test_gsheets.py`)
+Tests complete Google Sheets integration:
+
+```bash
+# Tests connection and authentication
+# Tests reading configuration and schedule sheets
+# Tests writing to booking log with pagination
+# Tests error handling for missing sheets
+python tests/test_gsheets.py
+```
+
+#### 📧 Email Tests (`tests/test_email_functionality.py`)
+Tests email system configuration and sending:
+
+```bash
+# Tests SMTP configuration
+# Tests email formatting and content
+# Sends actual test email to verify setup
+python tests/test_email_functionality.py
+```
+
+#### 🎭 Session Logging Demo (`tests/demo_session_logging.py`)
+Demonstrates the new session logging and screenshot tracking:
+
+```bash
+# Shows how terminal logs are captured
+# Shows how screenshots are tracked
+# Previews IT email content format
+python tests/demo_session_logging.py
+```
+
+### 🚀 Integration Testing
+
+Test the complete booking flow in stages:
+
+#### 1. **Environment Setup Test**
+```bash
+# Test all environment variables are set correctly
+python -c "import config; print('✅ Config loaded successfully')"
+```
+
+#### 2. **Google Sheets Connection Test**
+```bash
+# Test Google Sheets API connection and permissions
+python tests/test_gsheets.py
+```
+
+#### 3. **Email System Test**
+```bash
+# Test email configuration and send test email
+python tests/test_email_functionality.py
+```
+
+#### 4. **Parser Validation Test**
+```bash
+# Test all input parsing edge cases
+python tests/test_robust_parser.py
+```
+
+#### 5. **Browser Initialization Test**
+```bash
+# Test browser can launch and navigate (headless mode)
+python main.py --headless --dry-run
+```
+
+#### 6. **Full System Test (Dry Run)**
+```bash
+# Run complete system without actual booking attempts
+python main.py --dry-run --verbose
+```
+
+### 🔧 Debugging Tests
+
+#### Enable Verbose Logging
+```bash
+# See detailed test output
+python tests/test_gsheets.py --verbose
+```
+
+#### Test Individual Components
+```bash
+# Test just the EmailManager
+python -c "from email_manager import EmailManager; print('✅ EmailManager imports successfully')"
+
+# Test just the SheetsManager
+python -c "from sheets_manager import SheetsManager; print('✅ SheetsManager imports successfully')"
+
+# Test just the MultiSessionManager
+python -c "from multi_session_manager import MultiSessionManager; print('✅ MultiSessionManager imports successfully')"
+```
+
+#### Browser Tests
+```bash
+# Test browser with visible window (debugging)
+python main.py --no-headless --test-mode
+
+# Test browser in headless mode
+python main.py --headless --test-mode
+```
+
+### 📋 Test Checklist
+
+Before deploying to production, ensure all tests pass:
+
+- [ ] ✅ `test_robust_parser.py` - All parser functions handle edge cases
+- [ ] ✅ `test_midnight_function.py` - Countdown timing works correctly  
+- [ ] ✅ `test_gsheets.py` - Google Sheets integration works
+- [ ] ✅ `test_email_functionality.py` - Email system configured and working
+- [ ] ✅ Environment variables all set correctly
+- [ ] ✅ Browser can launch in both headless and visible modes
+- [ ] ✅ Google Sheets permissions granted to service account
+- [ ] ✅ Email test successfully received
+- [ ] ✅ All import statements work without errors
+
+### 🐛 Common Test Issues
+
+#### Import Errors
+```bash
+# If you get ModuleNotFoundError, ensure you're in the project root:
+cd /path/to/bot_cam_act
+python tests/test_robust_parser.py
+```
+
+#### Environment Variable Issues
+```bash
+# Check environment variables are set:
+python -c "import os; print([k for k in os.environ.keys() if 'CAM' in k or 'GSHEET' in k])"
+```
+
+#### Google Sheets Permission Issues
+```bash
+# Test sheets access specifically:
+python -c "from sheets_manager import SheetsManager; import os; sm = SheetsManager(os.environ['GSHEET_CAM_ID'], os.environ['GOOGLE_SERVICE_ACCOUNT_JSON']); print('✅ Sheets accessible')"
+```
+
+## 🔧 Troubleshooting
 
 ### Google Sheets Issues
 
-- **"Worksheet not found"**: Ensure the tab is named exactly "camden_active_booking_dates"
+- **"Worksheet not found"**: Ensure sheets are named exactly "Account & Court Configuration", "Booking Schedule", and "Booking Log"
 - **"File not found"**: Ensure the service account has been granted access to the Google Sheets
 - **"Authentication failed"**: Verify the service account JSON is valid and properly formatted
 - **"API not enabled"**: Enable both Google Sheets API and Google Drive API in your Google Cloud project
+- **"Rate limit exceeded"**: The system includes automatic retry logic with exponential backoff
+
+### Email Issues
+
+- **"SMTP Authentication failed"**: Verify Gmail App Password is correct and 2FA is enabled
+- **"No emails received"**: Check spam folder and verify recipient email addresses
+- **"Email content missing"**: Ensure all email environment variables are set (`IT_EMAIL_ADDRESS`, `INFO_EMAIL_ADDRESS`, `KYLE_EMAIL_ADDRESS`)
+
+### Browser Issues
+
+- **"Browser won't launch"**: Run `playwright install` to ensure browsers are installed
+- **"Timeouts during booking"**: Check internet connection and consider increasing timeout values
+- **"Login failures"**: Verify account credentials are correct and accounts aren't locked
 
 ### Environment Variables
 
 - Use single quotes around the `GOOGLE_SERVICE_ACCOUNT_JSON` value to preserve the JSON format
 - For GitHub Actions, paste the entire JSON content as a secret (GitHub handles escaping)
-
-### Local Testing
-
-You can test the Google Sheets integration locally by setting the environment variables and running:
-
-```bash
-python test_gsheets.py
-```
-
-Or test the integration directly:
-
-```bash
-python -c "from data_processor import download_data_from_gsheets; import os; print(download_data_from_gsheets(os.environ['GSHEET_CAM_ID'], 'camden_active_booking_dates', os.environ['GOOGLE_SERVICE_ACCOUNT_JSON']))"
-```
+- Ensure all required variables are set before running tests
 
 ## License
 

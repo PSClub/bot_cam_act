@@ -195,9 +195,13 @@ class BookingOrchestrator:
             
             if summary['failed_bookings'] > 0:
                 print(f"{get_timestamp()} 📋 Failed Details:")
-                for booking in summary['failed_bookings']:
-                    court_url, date, time = booking
-                    print(f"{get_timestamp()}   - {date} {time}")
+                for booking in summary['failed_details']:
+                    try:
+                        court_url, date, time = booking
+                        print(f"{get_timestamp()}   - {date} {time}")
+                    except Exception as unpack_error:
+                        print(f"{get_timestamp()} ❌ Error unpacking booking: {booking}, error: {unpack_error}")
+                        print(f"{get_timestamp()}   - Failed booking (raw): {booking}")
             
             # Log summary to Google Sheets
             from utils import get_london_datetime

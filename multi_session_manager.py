@@ -357,10 +357,17 @@ class MultiSessionManager:
         self.all_successful_bookings = []
         self.all_failed_bookings = []
     
+    def broadcast_message(self, message):
+        """Send a message to all session logs and also print to terminal."""
+        print(message)  # Always print to terminal
+        # Add to all session logs so it appears in IT emails
+        for session in self.sessions:
+            session.log_message(message)
+    
     async def initialize_sessions(self, headless=True):
         """Initialize all booking sessions."""
         try:
-            print(f"{get_timestamp()} === Initializing Multi-Session Booking System ===")
+            self.broadcast_message(f"{get_timestamp()} === Initializing Multi-Session Booking System ===")
             
             # Read configuration from Google Sheets
             config_data = self.sheets_manager.read_configuration_sheet()
@@ -397,7 +404,7 @@ class MultiSessionManager:
                 else:
                     print(f"{get_timestamp()} ❌ Failed to initialize session for {account_name}")
             
-            print(f"{get_timestamp()} ✅ Initialized {len(self.sessions)} booking sessions")
+            self.broadcast_message(f"{get_timestamp()} ✅ Initialized {len(self.sessions)} booking sessions")
             return len(self.sessions) > 0
             
         except Exception as e:
@@ -407,7 +414,7 @@ class MultiSessionManager:
     async def login_all_sessions(self):
         """Login to all sessions concurrently."""
         try:
-            print(f"{get_timestamp()} === Logging in all sessions ===")
+            self.broadcast_message(f"{get_timestamp()} === Logging in all sessions ===")
             
             # Login to all sessions concurrently
             login_tasks = [session.login() for session in self.sessions]
@@ -423,7 +430,7 @@ class MultiSessionManager:
                 else:
                     print(f"{get_timestamp()} ❌ Login failed for {self.sessions[i].account_name}")
             
-            print(f"{get_timestamp()} ✅ {successful_logins}/{len(self.sessions)} sessions logged in successfully")
+            self.broadcast_message(f"{get_timestamp()} ✅ {successful_logins}/{len(self.sessions)} sessions logged in successfully")
             return successful_logins > 0
             
         except Exception as e:
@@ -439,8 +446,8 @@ class MultiSessionManager:
             slots_to_book (list): List of time slots to book (in HHMM format)
         """
         try:
-            print(f"{get_timestamp()} === Booking all courts for {target_date} ===")
-            print(f"{get_timestamp()} 📅 Slots to book: {', '.join(slots_to_book)}")
+            self.broadcast_message(f"{get_timestamp()} === Booking all courts for {target_date} ===")
+            self.broadcast_message(f"{get_timestamp()} 📅 Slots to book: {', '.join(slots_to_book)}")
             
             # Book all courts concurrently
             booking_tasks = [
@@ -475,20 +482,20 @@ class MultiSessionManager:
                     # Even if the session failed, collect any failed bookings that were attempted
                     self.all_failed_bookings.extend(session.failed_bookings)
                 elif result:
-                    print(f"{get_timestamp()} ✅ Booking completed for {session.account_name}")
+                    self.broadcast_message(f"{get_timestamp()} ✅ Booking completed for {session.account_name}")
                     self.all_successful_bookings.extend(session.successful_bookings)
                     self.all_failed_bookings.extend(session.failed_bookings)
                 else:
-                    print(f"{get_timestamp()} ❌ Booking failed for {session.account_name}")
+                    self.broadcast_message(f"{get_timestamp()} ❌ Booking failed for {session.account_name}")
                     # Even if the session failed, collect any failed bookings that were attempted
                     self.all_failed_bookings.extend(session.failed_bookings)
             
             total_successful = len(self.all_successful_bookings)
             total_failed = len(self.all_failed_bookings)
             
-            print(f"{get_timestamp()} === Booking Summary ===")
-            print(f"{get_timestamp()} ✅ Successful bookings: {total_successful}")
-            print(f"{get_timestamp()} ❌ Failed bookings: {total_failed}")
+            self.broadcast_message(f"{get_timestamp()} === Booking Summary ===")
+            self.broadcast_message(f"{get_timestamp()} 📊 Total Successful Bookings: {total_successful}")
+            self.broadcast_message(f"{get_timestamp()} 📊 Total Failed Bookings: {total_failed}")
             
             # Debug: Print detailed results for each session
             for session in self.sessions:
@@ -507,7 +514,7 @@ class MultiSessionManager:
     async def checkout_all_sessions(self):
         """Process checkout for all sessions."""
         try:
-            print(f"{get_timestamp()} === Processing checkout for all sessions ===")
+            self.broadcast_message(f"{get_timestamp()} === Processing checkout for all sessions ===")
             
             # Checkout all sessions concurrently
             checkout_tasks = [session.checkout() for session in self.sessions]
@@ -523,7 +530,7 @@ class MultiSessionManager:
                 else:
                     print(f"{get_timestamp()} ❌ Checkout failed for {self.sessions[i].account_name}")
             
-            print(f"{get_timestamp()} ✅ {successful_checkouts}/{len(self.sessions)} sessions checked out successfully")
+            self.broadcast_message(f"{get_timestamp()} ✅ {successful_checkouts}/{len(self.sessions)} sessions checked out successfully")
             return successful_checkouts > 0
             
         except Exception as e:
@@ -533,13 +540,13 @@ class MultiSessionManager:
     async def logout_all_sessions(self):
         """Logout from all sessions."""
         try:
-            print(f"{get_timestamp()} === Logging out all sessions ===")
+            self.broadcast_message(f"{get_timestamp()} === Logging out all sessions ===")
             
             # Logout all sessions concurrently
             logout_tasks = [session.logout() for session in self.sessions]
             await asyncio.gather(*logout_tasks, return_exceptions=True)
             
-            print(f"{get_timestamp()} ✅ All sessions logged out")
+            self.broadcast_message(f"{get_timestamp()} ✅ All sessions logged out")
             
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error during logout process: {e}")
@@ -547,13 +554,13 @@ class MultiSessionManager:
     async def cleanup_all_sessions(self):
         """Clean up all browser sessions."""
         try:
-            print(f"{get_timestamp()} === Cleaning up all sessions ===")
+            self.broadcast_message(f"{get_timestamp()} === Cleaning up all sessions ===")
             
             # Cleanup all sessions concurrently
             cleanup_tasks = [session.cleanup() for session in self.sessions]
             await asyncio.gather(*cleanup_tasks, return_exceptions=True)
             
-            print(f"{get_timestamp()} ✅ All sessions cleaned up")
+            self.broadcast_message(f"{get_timestamp()} ✅ All sessions cleaned up")
             
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error during cleanup process: {e}")

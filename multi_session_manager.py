@@ -141,7 +141,7 @@ class BookingSession:
             # Navigate to court if needed
             if self.current_court_url != self.court_url:
                 self.log_message(f"{get_timestamp()} 🏟️ Navigating to {self.court_number}...")
-                if not await navigate_to_court(self.page, self.court_url):
+                if not await navigate_to_court(self.page, self.court_url, session=self):
                     self.log_message(f"{get_timestamp()} ❌ Failed to navigate to {self.court_number}")
                     await take_screenshot(self.page, f"navigation_failed_{self.court_number.lower()}", session=self)
                     return False
@@ -153,7 +153,7 @@ class BookingSession:
             # Navigate to date if needed
             if self.current_date != target_date:
                 self.log_message(f"{get_timestamp()} 📅 Navigating to date {target_date}...")
-                if not await find_date_on_calendar(self.page, target_date, (self.court_url, target_date, slots_to_book[0]), False):
+                if not await find_date_on_calendar(self.page, target_date, (self.court_url, target_date, slots_to_book[0]), False, session=self):
                     self.log_message(f"{get_timestamp()} ❌ Failed to find date {target_date} for {self.court_number}")
                     await take_screenshot(self.page, f"date_not_found_{target_date.replace('/', '-')}", session=self)
                     return False
@@ -168,7 +168,7 @@ class BookingSession:
                 
                 self.log_message(f"{get_timestamp()} 🎯 {self.account_name} attempting to book {slot_time} on {target_date}")
                 
-                if await book_slot(self.page, target_date, slot_time, slot_details):
+                if await book_slot(self.page, target_date, slot_time, slot_details, session=self):
                     self.successful_bookings.append(slot_details)
                     
                     # Log successful booking
@@ -230,7 +230,7 @@ class BookingSession:
             success = await checkout_basket(
                 self.page, BASKET_URL, LB_CARD_NUMBER, LB_CARD_EXPIRY_MONTH,
                 LB_CARD_EXPIRY_YEAR, LB_CARD_SECURITY_CODE, LB_CARDHOLDER_NAME,
-                LB_ADDRESS, LB_CITY, LB_POSTCODE, self.email
+                LB_ADDRESS, LB_CITY, LB_POSTCODE, self.email, session=self
             )
             
             if success:

@@ -91,20 +91,32 @@ async def optimized_countdown_logging(seconds_to_wait):
             await asyncio.sleep(1)
 
 
-async def navigate_to_court(page, court_url):
+async def navigate_to_court(page, court_url, session=None):
     """Navigates the browser to the specified court booking page."""
     try:
-        print(f"{get_timestamp()} Navigating to court booking page: {court_url.split('/')[-2]}")
+        log_msg = f"{get_timestamp()} Navigating to court booking page: {court_url.split('/')[-2]}"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.goto(court_url, wait_until="domcontentloaded", timeout=20000)
         await page.locator("#DateTimeDiv").wait_for(state="visible", timeout=15000)
-        print(f"{get_timestamp()} ✅ Successfully loaded page for: {await page.title()}")
+        log_msg = f"{get_timestamp()} ✅ Successfully loaded page for: {await page.title()}"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         # Take screenshot after successful navigation
-        await take_screenshot(page, "court_navigation_success")
+        await take_screenshot(page, "court_navigation_success", session=session)
         return True
     except Exception as e:
-        print(f"{get_timestamp()} ❌ An error occurred during navigation: {e}")
-        await take_screenshot(page, "navigation_error")
+        log_msg = f"{get_timestamp()} ❌ An error occurred during navigation: {e}"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+        await take_screenshot(page, "navigation_error", session=session)
         return False
 
 async def check_london_time_near_midnight():
@@ -167,19 +179,27 @@ async def wait_until_midnight():
             print(f"{get_timestamp()} ⏰ {int(seconds_to_wait)} seconds until midnight, checking again in {sleep_time} seconds...")
             await asyncio.sleep(sleep_time)
 
-async def rapid_advance_to_target_week(page, target_date_str, slot_details):
+async def rapid_advance_to_target_week(page, target_date_str, slot_details, session=None):
     """Rapidly click Next Week until we find the target date or reach the end."""
     date_obj = datetime.strptime(target_date_str, "%d/%m/%Y")
     formatted_date = f"{date_obj.strftime('%a').upper()} {date_obj.day}/{date_obj.month}"
     
-    print(f"{get_timestamp()} 🚀 Rapidly advancing to find '{formatted_date}'...")
+    log_msg = f"{get_timestamp()} 🚀 Rapidly advancing to find '{formatted_date}'..."
+    if session:
+        session.log_message(log_msg)
+    else:
+        print(log_msg)
     
     for i in range(20):  # Increased limit for rapid advancement
         # Check if target date is visible
         try:
             if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=500):
-                print(f"{get_timestamp()} ✅ Found target date '{formatted_date}' after rapid advancement!")
-                await take_screenshot(page, "rapid_advance_success", slot_details)
+                log_msg = f"{get_timestamp()} ✅ Found target date '{formatted_date}' after rapid advancement!"
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                await take_screenshot(page, "rapid_advance_success", slot_details, session=session)
                 return True
         except:
             pass
@@ -210,92 +230,161 @@ async def rapid_advance_to_target_week(page, target_date_str, slot_details):
                     try:
                         await page.wait_for_selector('h4.timetable-title', timeout=2000)
                     except:
-                        print(f"{get_timestamp()} ⚠️ Calendar content not loading properly, continuing...")
+                        log_msg = f"{get_timestamp()} ⚠️ Calendar content not loading properly, continuing..."
+                        if session:
+                            session.log_message(log_msg)
+                        else:
+                            print(log_msg)
             else:
-                print(f"{get_timestamp()} ❌ No more weeks available")
+                log_msg = f"{get_timestamp()} ❌ No more weeks available"
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
                 break
         except Exception as e:
-            print(f"{get_timestamp()} ❌ Cannot advance further: {e}")
+            log_msg = f"{get_timestamp()} ❌ Cannot advance further: {e}"
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
             break
     
     # If not found, try refreshing
-    print(f"{get_timestamp()} Target date not found, refreshing page...")
+    log_msg = f"{get_timestamp()} Target date not found, refreshing page..."
+    if session:
+        session.log_message(log_msg)
+    else:
+        print(log_msg)
     await page.reload()
     try:
         # Handle potential form resubmission dialog
         page.on("dialog", lambda dialog: dialog.accept())
         await page.wait_for_load_state('domcontentloaded', timeout=10000)
-        print(f"{get_timestamp()} ✅ Page refreshed successfully")
+        log_msg = f"{get_timestamp()} ✅ Page refreshed successfully"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
     except:
-        print(f"{get_timestamp()} ⚠️ Page refresh had issues, continuing...")
+        log_msg = f"{get_timestamp()} ⚠️ Page refresh had issues, continuing..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
     
     # Check again after refresh
     try:
         if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=2000):
-            print(f"{get_timestamp()} ✅ Found target date '{formatted_date}' after refresh!")
-            await take_screenshot(page, "rapid_advance_after_refresh", slot_details)
+            log_msg = f"{get_timestamp()} ✅ Found target date '{formatted_date}' after refresh!"
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
+            await take_screenshot(page, "rapid_advance_after_refresh", slot_details, session=session)
             return True
     except:
         pass
     
     return False
 
-async def find_date_on_calendar(page, target_date_str, slot_details, is_strategic_timing=False):
+async def find_date_on_calendar(page, target_date_str, slot_details, is_strategic_timing=False, session=None):
     """Enhanced calendar navigation with midnight release strategy."""
     date_obj = datetime.strptime(target_date_str, "%d/%m/%Y")
     formatted_date = f"{date_obj.strftime('%a').upper()} {date_obj.day}/{date_obj.month}"
-    print(f"{get_timestamp()} Searching for week containing '{formatted_date}'...")
+    log_msg = f"{get_timestamp()} Searching for week containing '{formatted_date}'..."
+    if session:
+        session.log_message(log_msg)
+    else:
+        print(log_msg)
 
     # Strategic timing approach
     if is_strategic_timing:
-        print(f"{get_timestamp()} 🎯 Using strategic midnight release approach...")
+        log_msg = f"{get_timestamp()} 🎯 Using strategic midnight release approach..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         # Step 1: Click Next Week only 3 times (get to week before target)
-        print(f"{get_timestamp()} 📅 Advancing 3 weeks ahead to position before target...")
+        log_msg = f"{get_timestamp()} 📅 Advancing 3 weeks ahead to position before target..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+            
         for i in range(3):
             try:
                 next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
                 await next_week_button.wait_for(state="visible", timeout=2000)
-                print(f"{get_timestamp()}   - Clicking 'Next Week' ({i+1}/3)...")
+                log_msg = f"{get_timestamp()}   - Clicking 'Next Week' ({i+1}/3)..."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
                 await next_week_button.click()
                 await page.wait_for_load_state('networkidle', timeout=5000)
                 
                 # Take screenshot after each week advancement
-                await take_screenshot(page, f"week_advance_{i+1}", slot_details)
+                await take_screenshot(page, f"week_advance_{i+1}", slot_details, session=session)
             except Exception as e:
-                print(f"{get_timestamp()} ⚠️ Issue during strategic advancement: {e}")
+                log_msg = f"{get_timestamp()} ⚠️ Issue during strategic advancement: {e}"
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
                 break
         
         # Step 2: Check if we're near midnight
         near_midnight, current_time = await check_london_time_near_midnight()
         
         if near_midnight:
-            print(f"{get_timestamp()} ⏰ Within 10 minutes of midnight - entering wait mode...")
+            log_msg = f"{get_timestamp()} ⏰ Within 10 minutes of midnight - entering wait mode..."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
             await wait_until_midnight()
             
             # Step 3: Rapid advancement after midnight
-            success = await rapid_advance_to_target_week(page, target_date_str, slot_details)
+            success = await rapid_advance_to_target_week(page, target_date_str, slot_details, session=session)
             return success
         else:
-            print(f"{get_timestamp()} ✅ Not near midnight, proceeding with normal booking...")
+            log_msg = f"{get_timestamp()} ✅ Not near midnight, proceeding with normal booking..."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
     
     # Normal calendar navigation (original logic)
     for i in range(15):
         date_header_locator = page.locator("h4.timetable-title")
         
         if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=1000):
-            print(f"{get_timestamp()} ✅ Found date '{formatted_date}' on the calendar.")
-            await take_screenshot(page, "date_found_on_calendar", slot_details)
+            log_msg = f"{get_timestamp()} ✅ Found date '{formatted_date}' on the calendar."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
+            await take_screenshot(page, "date_found_on_calendar", slot_details, session=session)
             return True
 
         visible_dates_before_click = await date_header_locator.all_inner_texts()
         last_date_before_click = visible_dates_before_click[-1] if visible_dates_before_click else None
-        print(f"{get_timestamp()}   - Latest date currently visible: {last_date_before_click}")
+        log_msg = f"{get_timestamp()}   - Latest date currently visible: {last_date_before_click}"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
 
         try:
             next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
             await next_week_button.wait_for(state="visible", timeout=2000)
-            print(f"{get_timestamp()}   - Clicking 'Next Week'...")
+            log_msg = f"{get_timestamp()}   - Clicking 'Next Week'..."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
             await next_week_button.click()
 
             await page.wait_for_function(
@@ -308,21 +397,33 @@ async def find_date_on_calendar(page, target_date_str, slot_details, is_strategi
                 """,
                 timeout=15000
             )
-            print(f"{get_timestamp()}   - New week has loaded successfully.")
+            log_msg = f"{get_timestamp()}   - New week has loaded successfully."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
             
             # Take screenshot after each week advancement
-            await take_screenshot(page, f"week_advance_{i+1}", slot_details)
+            await take_screenshot(page, f"week_advance_{i+1}", slot_details, session=session)
 
         except PlaywrightTimeoutError:
-            print(f"{get_timestamp()} ❌ Reached end of calendar, but did not find date {formatted_date}.")
-            await take_screenshot(page, "end_of_calendar", slot_details)
+            log_msg = f"{get_timestamp()} ❌ Reached end of calendar, but did not find date {formatted_date}."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
+            await take_screenshot(page, "end_of_calendar", slot_details, session=session)
             return False
             
-    print(f"{get_timestamp()} ❌ Searched 15 weeks but did not find {formatted_date}.")
-    await take_screenshot(page, f"date_not_found", slot_details)
+    log_msg = f"{get_timestamp()} ❌ Searched 15 weeks but did not find {formatted_date}."
+    if session:
+        session.log_message(log_msg)
+    else:
+        print(log_msg)
+    await take_screenshot(page, f"date_not_found", slot_details, session=session)
     return False
 
-async def book_slot(page, target_date_str, target_time_str, slot_details):
+async def book_slot(page, target_date_str, target_time_str, slot_details, session=None):
     """Finds a specific date/time slot by its unique href and clicks it."""
     href_time_format = target_time_str[:2]
     slot_locator = page.locator(
@@ -330,208 +431,368 @@ async def book_slot(page, target_date_str, target_time_str, slot_details):
     )
     try:
         await slot_locator.wait_for(state="visible", timeout=3000)
-        print(f"{get_timestamp()} ✅ Slot at {target_time_str} is available. Clicking 'Book'...")
+        log_msg = f"{get_timestamp()} ✅ Slot at {target_time_str} is available. Clicking 'Book'..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         # Take screenshot before clicking the slot
-        await take_screenshot(page, "slot_before_click", slot_details)
+        await take_screenshot(page, "slot_before_click", slot_details, session=session)
         
         await slot_locator.click()
         await page.wait_for_load_state('networkidle')
-        print(f"{get_timestamp()} Slot added to basket.")
+        log_msg = f"{get_timestamp()} Slot added to basket."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         # Take screenshot after adding to basket
-        await take_screenshot(page, "slot_added_to_basket", slot_details)
+        await take_screenshot(page, "slot_added_to_basket", slot_details, session=session)
         return True
     except PlaywrightTimeoutError:
-        print(f"{get_timestamp()} ⚠️ Slot at {target_time_str} is not available or is already booked.")
-        await take_screenshot(page, f"slot_unavailable", slot_details)
+        log_msg = f"{get_timestamp()} ⚠️ Slot at {target_time_str} is not available or is already booked."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+        await take_screenshot(page, f"slot_unavailable", slot_details, session=session)
         return False
 
-async def fill_payment_form(page, card_number, expiry_month, expiry_year, security_code):
+async def fill_payment_form(page, card_number, expiry_month, expiry_year, security_code, session=None):
     """Fill out the payment form with card details."""
     try:
-        print(f"{get_timestamp()} --- Filling Payment Form ---")
+        log_msg = f"{get_timestamp()} --- Filling Payment Form ---"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         # Wait for payment form to load
         await page.wait_for_selector("input[name='cardNumber']", timeout=10000)
-        print(f"{get_timestamp()} Payment form detected. Filling card details...")
+        log_msg = f"{get_timestamp()} Payment form detected. Filling card details..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         # Take screenshot of empty payment form
-        await take_screenshot(page, "payment_form_empty")
+        await take_screenshot(page, "payment_form_empty", session=session)
         
         # Fill card number
-        print(f"{get_timestamp()} Entering card number...")
+        log_msg = f"{get_timestamp()} Entering card number..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.fill("input[name='cardNumber']", card_number)
         
         # Fill expiry month
-        print(f"{get_timestamp()} Entering expiry month...")
+        log_msg = f"{get_timestamp()} Entering expiry month..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.fill("input[name='expiryDate']", expiry_month)
         
         # Fill expiry year  
-        print(f"{get_timestamp()} Entering expiry year...")
+        log_msg = f"{get_timestamp()} Entering expiry year..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.fill("input[name='expiryDate2']", expiry_year)
         
         # Fill security code
-        print(f"{get_timestamp()} Entering security code...")
+        log_msg = f"{get_timestamp()} Entering security code..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.fill("input[name='csc']", security_code)
         
-        print(f"{get_timestamp()} ✅ Payment details filled successfully.")
+        log_msg = f"{get_timestamp()} ✅ Payment details filled successfully."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         # Click Continue button
-        print(f"{get_timestamp()} Clicking 'Continue' to submit payment...")
+        log_msg = f"{get_timestamp()} Clicking 'Continue' to submit payment..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         continue_button = page.locator("input[value='Continue']")
         await continue_button.click()
         
         # Wait for processing
         await page.wait_for_load_state('networkidle')
-        print(f"{get_timestamp()} Payment submitted. Waiting for response...")
+        log_msg = f"{get_timestamp()} Payment submitted. Waiting for response..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         return True
         
     except Exception as e:
-        print(f"{get_timestamp()} ❌ Error filling payment form: {e}")
-        await take_screenshot(page, "payment_form_error")
+        log_msg = f"{get_timestamp()} ❌ Error filling payment form: {e}"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+        await take_screenshot(page, "payment_form_error", session=session)
         return False
 
-async def fill_cardholder_details(page, cardholder_name, address, city, postcode, email):
+async def fill_cardholder_details(page, cardholder_name, address, city, postcode, email, session=None):
     """Fill out the cardholder additional information form."""
     try:
-        print(f"{get_timestamp()} --- Filling Cardholder Details ---")
+        log_msg = f"{get_timestamp()} --- Filling Cardholder Details ---"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         # Wait for cardholder form to load
         await page.wait_for_selector("input[name='cardholderName']", timeout=10000)
-        print(f"{get_timestamp()} Cardholder details form detected. Filling information...")
+        log_msg = f"{get_timestamp()} Cardholder details form detected. Filling information..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         # Take screenshot of empty cardholder form
-        await take_screenshot(page, "cardholder_form_empty")
+        await take_screenshot(page, "cardholder_form_empty", session=session)
         
         # Fill cardholder name
-        print(f"{get_timestamp()} Entering cardholder name...")
+        log_msg = f"{get_timestamp()} Entering cardholder name..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.fill("input[name='cardholderName']", cardholder_name)
         
         # Fill address
-        print(f"{get_timestamp()} Entering address...")
+        log_msg = f"{get_timestamp()} Entering address..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.fill("input[name='address1']", address)
         
         # Fill city
-        print(f"{get_timestamp()} Entering city...")
+        log_msg = f"{get_timestamp()} Entering city..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.fill("input[name='city']", city)
         
         # Fill postcode
-        print(f"{get_timestamp()} Entering postcode...")
+        log_msg = f"{get_timestamp()} Entering postcode..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.fill("input[name='postcode']", postcode)
         
         # Fill email
-        print(f"{get_timestamp()} Entering email...")
+        log_msg = f"{get_timestamp()} Entering email..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.fill("input[name='emailAddress']", email)
         
-        print(f"{get_timestamp()} ✅ Cardholder details filled successfully.")
+        log_msg = f"{get_timestamp()} ✅ Cardholder details filled successfully."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         # Click Continue button
-        print(f"{get_timestamp()} Clicking 'Continue' to submit cardholder details...")
+        log_msg = f"{get_timestamp()} Clicking 'Continue' to submit cardholder details..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         continue_button = page.locator("input[value='Continue']")
         await continue_button.click()
         
         # Wait for processing
         await page.wait_for_load_state('networkidle')
-        print(f"{get_timestamp()} Cardholder details submitted. Waiting for response...")
+        log_msg = f"{get_timestamp()} Cardholder details submitted. Waiting for response..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         
         return True
         
     except Exception as e:
-        print(f"{get_timestamp()} ❌ Error filling cardholder details: {e}")
-        await take_screenshot(page, "cardholder_details_error")
+        log_msg = f"{get_timestamp()} ❌ Error filling cardholder details: {e}"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+        await take_screenshot(page, "cardholder_details_error", session=session)
         return False
 
-async def checkout_basket(page, basket_url, card_number=None, expiry_month=None, expiry_year=None, security_code=None, cardholder_name=None, address=None, city=None, postcode=None, email=None):
+async def checkout_basket(page, basket_url, card_number=None, expiry_month=None, expiry_year=None, security_code=None, cardholder_name=None, address=None, city=None, postcode=None, email=None, session=None):
     """Navigates to the basket, takes screenshots, and finalises the booking."""
     try:
-        print(f"{get_timestamp()} --- Navigating to Basket and Checking Out ---")
+        log_msg = f"{get_timestamp()} --- Navigating to Basket and Checking Out ---"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await page.goto(basket_url, wait_until="domcontentloaded")
-        await take_screenshot(page, "basket_page")
+        await take_screenshot(page, "basket_page", session=session)
         
         checkout_button = page.locator("#ctl00_PageContent_btnContinue")
         await checkout_button.wait_for(state="visible", timeout=10000)
         
-        print(f"{get_timestamp()} Basket page loaded. Clicking 'Make Booking'...")
+        log_msg = f"{get_timestamp()} Basket page loaded. Clicking 'Make Booking'..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         await checkout_button.click()
         
         await page.wait_for_load_state('networkidle')
-        await take_screenshot(page, "after_make_booking")
+        await take_screenshot(page, "after_make_booking", session=session)
         
         # First check if we directly reached the Payment Successful page (sufficient credit route)
-        print(f"{get_timestamp()} Checking for immediate Payment Successful page...")
+        log_msg = f"{get_timestamp()} Checking for immediate Payment Successful page..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         success_locator = page.locator("h1:has-text('Payment Successful')")
         immediate_success = await success_locator.is_visible(timeout=3000)
         
         if immediate_success:
-            print(f"{get_timestamp()} ✅ 'Payment Successful' found immediately - sufficient credit route!")
-            await take_screenshot(page, "payment_successful_direct")
+            log_msg = f"{get_timestamp()} ✅ 'Payment Successful' found immediately - sufficient credit route!"
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
+            await take_screenshot(page, "payment_successful_direct", session=session)
             return True
         
         # If not successful yet, check for payment form (insufficient credit route)
-        print(f"{get_timestamp()} Payment not immediately successful, checking for payment forms...")
+        log_msg = f"{get_timestamp()} Payment not immediately successful, checking for payment forms..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         payment_form_exists = await page.locator("input[name='cardNumber']").is_visible(timeout=5000)
         
         if payment_form_exists and card_number:
-            print(f"{get_timestamp()} Payment form detected. Processing card payment flow...")
-            payment_success = await fill_payment_form(page, card_number, expiry_month, expiry_year, security_code)
+            log_msg = f"{get_timestamp()} Payment form detected. Processing card payment flow..."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
+            payment_success = await fill_payment_form(page, card_number, expiry_month, expiry_year, security_code, session=session)
             if not payment_success:
                 return False
             
             # Check if we're now on the cardholder details page
             await page.wait_for_load_state('networkidle')
-            await take_screenshot(page, "after_payment_form")
+            await take_screenshot(page, "after_payment_form", session=session)
             
             cardholder_form_exists = await page.locator("input[name='cardholderName']").is_visible(timeout=5000)
             
             if cardholder_form_exists and cardholder_name:
-                print(f"{get_timestamp()} Cardholder details form detected. Processing cardholder information...")
-                cardholder_success = await fill_cardholder_details(page, cardholder_name, address, city, postcode, email)
+                log_msg = f"{get_timestamp()} Cardholder details form detected. Processing cardholder information..."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                cardholder_success = await fill_cardholder_details(page, cardholder_name, address, city, postcode, email, session=session)
                 if not cardholder_success:
                     return False
             elif cardholder_form_exists and not cardholder_name:
-                print(f"{get_timestamp()} ❌ Cardholder details form detected but no cardholder details provided.")
-                await take_screenshot(page, "cardholder_form_no_details")
+                log_msg = f"{get_timestamp()} ❌ Cardholder details form detected but no cardholder details provided."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                await take_screenshot(page, "cardholder_form_no_details", session=session)
                 return False
             
             # Check if we're on the payment confirmation page with "Make a payment" button
             await page.wait_for_load_state('networkidle')
-            await take_screenshot(page, "after_cardholder_details")
+            await take_screenshot(page, "after_cardholder_details", session=session)
             
             make_payment_button = page.locator("input[value='Make a payment']")
             make_payment_exists = await make_payment_button.is_visible(timeout=5000)
             
             if make_payment_exists:
-                print(f"{get_timestamp()} Payment confirmation page detected. Clicking 'Make a payment'...")
+                log_msg = f"{get_timestamp()} Payment confirmation page detected. Clicking 'Make a payment'..."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
                 await make_payment_button.click()
                 await page.wait_for_load_state('networkidle')
-                await take_screenshot(page, "after_make_payment")
+                await take_screenshot(page, "after_make_payment", session=session)
                 
         elif payment_form_exists and not card_number:
-            print(f"{get_timestamp()} ❌ Payment form detected but no card details provided.")
-            await take_screenshot(page, "payment_form_no_details")
+            log_msg = f"{get_timestamp()} ❌ Payment form detected but no card details provided."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
+            await take_screenshot(page, "payment_form_no_details", session=session)
             return False
         else:
-            print(f"{get_timestamp()} No payment form detected, checking for other elements...")
+            log_msg = f"{get_timestamp()} No payment form detected, checking for other elements..."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
         
         # Final check for Payment Successful (after card payment flow)
-        print(f"{get_timestamp()} Performing final check for Payment Successful page...")
+        log_msg = f"{get_timestamp()} Performing final check for Payment Successful page..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
         try:
             await success_locator.wait_for(state="visible", timeout=15000)
-            print(f"{get_timestamp()} ✅ 'Payment Successful' text found after payment flow. Booking is confirmed!")
-            await take_screenshot(page, "payment_successful_after_card_flow")
+            log_msg = f"{get_timestamp()} ✅ 'Payment Successful' text found after payment flow. Booking is confirmed!"
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
+            await take_screenshot(page, "payment_successful_after_card_flow", session=session)
             return True
         except PlaywrightTimeoutError:
-            print(f"{get_timestamp()} ❌ 'Payment Successful' text NOT found. Booking may have failed.")
-            await take_screenshot(page, "payment_final_fail")
+            log_msg = f"{get_timestamp()} ❌ 'Payment Successful' text NOT found. Booking may have failed."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
+            await take_screenshot(page, "payment_final_fail", session=session)
             return False
 
     except PlaywrightTimeoutError as e:
-        print(f"{get_timestamp()} ❌ Timeout during checkout process: {e}")
-        await take_screenshot(page, "checkout_timeout_error")
+        log_msg = f"{get_timestamp()} ❌ Timeout during checkout process: {e}"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+        await take_screenshot(page, "checkout_timeout_error", session=session)
         return False
     except Exception as e:
-        print(f"{get_timestamp()} ❌ Unexpected error during checkout: {e}")
-        await take_screenshot(page, "checkout_critical_error")
+        log_msg = f"{get_timestamp()} ❌ Unexpected error during checkout: {e}"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+        await take_screenshot(page, "checkout_critical_error", session=session)
         return False

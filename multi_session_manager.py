@@ -51,6 +51,7 @@ class BookingSession:
         # Booking results
         self.successful_bookings = []
         self.failed_bookings = []
+        self.total_attempts = 0
         
         # Session logging and screenshots
         self.session_logs = []  # Capture all terminal output for this session
@@ -138,12 +139,45 @@ class BookingSession:
         try:
             self.log_message(f"{get_timestamp()} --- {self.account_name} booking {len(slots_to_book)} slots for {target_date} ---")
             
+            # Record ALL slot attempts upfront - this ensures they're counted even if booking fails early
+            self.total_attempts = len(slots_to_book)
+            self.log_message(f"{get_timestamp()} 📋 Recording {self.total_attempts} slot attempts for {self.account_name}")
+            
+            # Pre-create failed bookings for all slots (will be removed if successful)
+            for slot_time in slots_to_book:
+                slot_details = (self.court_url, target_date, slot_time)
+                self.failed_bookings.append(slot_details)
+                
+                # Log all attempts to Google Sheets immediately
+                log_entry = self.sheets_manager.create_log_entry(
+                    email=self.email,
+                    court=self.court_number,
+                    date=target_date,
+                    time=slot_time,
+                    status='🔄 Attempting',
+                    error_details='Booking process started'
+                )
+                self.sheets_manager.write_booking_log(log_entry)
+            
             # Navigate to court if needed
             if self.current_court_url != self.court_url:
                 self.log_message(f"{get_timestamp()} 🏟️ Navigating to {self.court_number}...")
                 if not await navigate_to_court(self.page, self.court_url, session=self):
                     self.log_message(f"{get_timestamp()} ❌ Failed to navigate to {self.court_number}")
                     await take_screenshot(self.page, f"navigation_failed_{self.court_number.lower()}", session=self)
+                    
+                    # Update all pre-recorded attempts as failed due to navigation failure
+                    for slot_time in slots_to_book:
+                        log_entry = self.sheets_manager.create_log_entry(
+                            email=self.email,
+                            court=self.court_number,
+                            date=target_date,
+                            time=slot_time,
+                            status='❌ Failed',
+                            error_details='Failed to navigate to court page'
+                        )
+                        self.sheets_manager.write_booking_log(log_entry)
+                    
                     return False
                 self.log_message(f"{get_timestamp()} ✅ Successfully navigated to {self.court_number}")
                 await take_screenshot(self.page, f"court_page_{self.court_number.lower()}", session=self)
@@ -156,6 +190,19 @@ class BookingSession:
                 if not await find_date_on_calendar(self.page, target_date, (self.court_url, target_date, slots_to_book[0]), False, session=self):
                     self.log_message(f"{get_timestamp()} ❌ Failed to find date {target_date} for {self.court_number}")
                     await take_screenshot(self.page, f"date_not_found_{target_date.replace('/', '-')}", session=self)
+                    
+                    # Update all pre-recorded attempts as failed due to date not found
+                    for slot_time in slots_to_book:
+                        log_entry = self.sheets_manager.create_log_entry(
+                            email=self.email,
+                            court=self.court_number,
+                            date=target_date,
+                            time=slot_time,
+                            status='❌ Failed',
+                            error_details='Target date not found on calendar (too far in advance)'
+                        )
+                        self.sheets_manager.write_booking_log(log_entry)
+                    
                     return False
                 self.log_message(f"{get_timestamp()} ✅ Successfully navigated to date {target_date}")
                 await take_screenshot(self.page, f"date_found_{target_date.replace('/', '-')}", session=self)
@@ -169,17 +216,19 @@ class BookingSession:
                 self.log_message(f"{get_timestamp()} 🎯 {self.account_name} attempting to book {slot_time} on {target_date}")
                 
                 if await book_slot(self.page, target_date, slot_time, slot_details, session=self):
+                    # Remove from failed bookings and add to successful
+                    if slot_details in self.failed_bookings:
+                        self.failed_bookings.remove(slot_details)
                     self.successful_bookings.append(slot_details)
                     
-                    # Log successful booking
-                    # Create log entry for successful booking using helper function
+                    # Update log entry for successful booking
                     log_entry = self.sheets_manager.create_log_entry(
                         email=self.email,
                         court=self.court_number,
                         date=target_date,
                         time=slot_time,
                         status='✅ Success',
-                        error_details=''
+                        error_details='Booking completed successfully'
                     )
                     self.sheets_manager.write_booking_log(log_entry)
                     
@@ -187,9 +236,7 @@ class BookingSession:
                     await take_screenshot(self.page, f"booking_success_{slot_time}", session=self)
                     successful_slots += 1
                 else:
-                    self.failed_bookings.append(slot_details)
-                    
-                    # Create log entry for failed booking using helper function
+                    # Update the existing failed booking entry with specific failure reason
                     log_entry = self.sheets_manager.create_log_entry(
                         email=self.email,
                         court=self.court_number,
@@ -211,6 +258,22 @@ class BookingSession:
         except Exception as e:
             self.log_message(f"{get_timestamp()} ❌ Error booking slots for {self.account_name}: {e}")
             await take_screenshot(self.page, f"booking_error_{self.account_name.lower()}", session=self)
+            
+            # Update any remaining failed bookings with the exception details
+            for slot_time in slots_to_book:
+                # Only log if this slot hasn't been processed yet
+                slot_details = (self.court_url, target_date, slot_time)
+                if slot_details in self.failed_bookings:
+                    log_entry = self.sheets_manager.create_log_entry(
+                        email=self.email,
+                        court=self.court_number,
+                        date=target_date,
+                        time=slot_time,
+                        status='❌ Failed',
+                        error_details=f'Booking process error: {str(e)}'
+                    )
+                    self.sheets_manager.write_booking_log(log_entry)
+            
             return False
     
     async def checkout(self):
@@ -535,10 +598,19 @@ class MultiSessionManager:
                 'court_url': session.court_url,
                 'successful_bookings': session.successful_bookings,
                 'failed_bookings': session.failed_bookings,
-                'total_attempts': len(session.successful_bookings) + len(session.failed_bookings),
+                'total_attempts': session.total_attempts,
                 'session_logs': session.session_logs,  # Include all terminal output for this session
                 'screenshots_taken': session.screenshots_taken  # Include all screenshots taken
             }
+            
+            # Debug logging to verify counts
+            print(f"{get_timestamp()} 🔍 Session details for {session.account_name}:")
+            print(f"{get_timestamp()}   Total attempts: {session.total_attempts}")
+            print(f"{get_timestamp()}   Successful bookings: {len(session.successful_bookings)}")
+            print(f"{get_timestamp()}   Failed bookings: {len(session.failed_bookings)}")
+            print(f"{get_timestamp()}   Session logs count: {len(session.session_logs)}")
+            print(f"{get_timestamp()}   Screenshots count: {len(session.screenshots_taken)}")
+            
             session_details.append(session_info)
         
         return session_details

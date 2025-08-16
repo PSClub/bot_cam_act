@@ -248,19 +248,40 @@ class BookingOrchestrator:
             booking_log_entries = booking_log_result['entries']
             print(f"{get_timestamp()}   Booking log entries collected: {len(booking_log_entries)} entries")
             
-            # Send individual session emails to IT_EMAIL_ADDRESS only
+            # Validate email configuration
+            from config import SENDER_EMAIL, GMAIL_APP_PASSWORD
+            
+            if not SENDER_EMAIL:
+                print(f"{get_timestamp()} ❌ SENDER_EMAIL (KYLE_EMAIL_ADDRESS) not configured, cannot send emails")
+                return
+            
+            if not GMAIL_APP_PASSWORD:
+                print(f"{get_timestamp()} ❌ GMAIL_APP_PASSWORD not configured, cannot send emails")
+                return
+            
+            print(f"{get_timestamp()} ✅ Email configuration validated - Sender: {SENDER_EMAIL}")
+            
+            # Send individual session emails to IT_EMAIL_ADDRESS only (one email per court)
             if IT_EMAIL_ADDRESS:
-                print(f"{get_timestamp()} 📧 Sending individual session emails to IT...")
+                print(f"{get_timestamp()} 📧 Sending individual session emails to IT ({IT_EMAIL_ADDRESS})...")
+                print(f"{get_timestamp()}   Will send {len(session_details)} separate emails (one per court)")
                 await self.send_individual_session_emails(session_details, IT_EMAIL_ADDRESS)
             else:
                 print(f"{get_timestamp()} ⚠️ IT_EMAIL_ADDRESS not configured, skipping individual session emails")
             
-            # Send summary email to INFO_EMAIL_ADDRESS and KYLE_EMAIL_ADDRESS only
-            if RECIPIENT_INFO and RECIPIENT_KYLE:
-                print(f"{get_timestamp()} 📧 Sending summary email to INFO and KYLE...")
-                await self.send_summary_email(summary, session_details, booking_log_entries, [RECIPIENT_INFO, RECIPIENT_KYLE])
+            # Send summary email to INFO_EMAIL_ADDRESS and KYLE_EMAIL_ADDRESS
+            summary_recipients = []
+            if RECIPIENT_INFO:
+                summary_recipients.append(RECIPIENT_INFO)
+            if RECIPIENT_KYLE:
+                summary_recipients.append(RECIPIENT_KYLE)
+            
+            if summary_recipients:
+                print(f"{get_timestamp()} 📧 Sending summary email to {len(summary_recipients)} recipients...")
+                print(f"{get_timestamp()}   Recipients: {summary_recipients}")
+                await self.send_summary_email(summary, session_details, booking_log_entries, summary_recipients)
             else:
-                print(f"{get_timestamp()} ⚠️ Summary email recipients not configured, skipping summary email")
+                print(f"{get_timestamp()} ⚠️ No summary email recipients configured (INFO_EMAIL_ADDRESS and/or KYLE_EMAIL_ADDRESS), skipping summary email")
             
             print(f"{get_timestamp()} ✅ All email notifications sent successfully")
             
@@ -328,6 +349,35 @@ class BookingOrchestrator:
             else:
                 body += "   None\n"
             
+            # Add screenshot information
+            body += f"""
+
+📸 Screenshots Taken: {len(session.get('screenshots_taken', []))}
+"""
+            
+            if session.get('screenshots_taken'):
+                body += "📸 Screenshot Details:\n"
+                for i, screenshot in enumerate(session['screenshots_taken'], 1):
+                    body += f"   {i}. {screenshot['timestamp']} - {screenshot['description']}\n"
+                    body += f"      File: {screenshot['path']}\n"
+            else:
+                body += "📸 No screenshots were taken during this session.\n"
+            
+            # Add full terminal logs
+            body += f"""
+
+📝 Complete Terminal Logs: {len(session.get('session_logs', []))} entries
+"""
+            
+            if session.get('session_logs'):
+                body += "📝 Full Terminal Output:\n"
+                body += "=" * 80 + "\n"
+                for log_entry in session['session_logs']:
+                    body += f"{log_entry}\n"
+                body += "=" * 80 + "\n"
+            else:
+                body += "📝 No session logs were captured.\n"
+            
             body += f"""
 
 ⏰ Timestamp: {self.get_current_london_time()}
@@ -335,6 +385,7 @@ class BookingOrchestrator:
 🏟️ Slots Attempted: {len(self.slots_to_book)}
 
 This is an automated session report from the Tennis Court Booking System.
+Complete terminal logs and screenshot details are included above for debugging.
             """.strip()
             
             print(f"{get_timestamp()}   📧 Sending session email for {session['account_name']} to {recipient}")
@@ -385,22 +436,70 @@ This is an automated session report from the Tennis Court Booking System.
             
             body += f"""
 
-📋 Detailed Booking Log (Most Recent Entries):
+📋 Slot-by-Slot Booking Summary:
+"""
+            
+            # Create a detailed table showing every slot attempted across all courts
+            slot_summary = {}
+            for session in session_details:
+                account_name = session['account_name']
+                court_num = session['court_number']
+                
+                # Track attempted slots
+                attempted_slots = set()
+                
+                # Add successful bookings
+                for booking in session['successful_bookings']:
+                    court_url, date, time = booking
+                    slot_key = f"{date} {time}"
+                    if slot_key not in slot_summary:
+                        slot_summary[slot_key] = {}
+                    slot_summary[slot_key][court_num] = "✅ SUCCESS"
+                    attempted_slots.add(slot_key)
+                
+                # Add failed bookings
+                for booking in session['failed_bookings']:
+                    court_url, date, time = booking
+                    slot_key = f"{date} {time}"
+                    if slot_key not in slot_summary:
+                        slot_summary[slot_key] = {}
+                    slot_summary[slot_key][court_num] = "❌ FAILED"
+                    attempted_slots.add(slot_key)
+            
+            # Format the slot summary table
+            if slot_summary:
+                body += "   Date & Time       | Court 1 (Mother) | Court 2 (Father) | Court 3 (Bruce)\n"
+                body += "   " + "-" * 75 + "\n"
+                
+                for slot_key in sorted(slot_summary.keys()):
+                    court1_status = slot_summary[slot_key].get("Court 1", "-")
+                    court2_status = slot_summary[slot_key].get("Court 2", "-")
+                    court3_status = slot_summary[slot_key].get("Court 3", "-")
+                    
+                    body += f"   {slot_key:<17} | {court1_status:<16} | {court2_status:<16} | {court3_status:<15}\n"
+            else:
+                body += "   No slots attempted\n"
+            
+            body += f"""
+
+📋 Recent Booking Log Entries (Last 10):
 """
             
             if booking_log_entries:
-                # Add headers
-                if booking_log_entries:
-                    headers = list(booking_log_entries[0].keys())
-                    body += "   " + " | ".join(headers) + "\n"
-                    body += "   " + "-" * (len(" | ".join(headers))) + "\n"
+                # Create a more readable log table
+                body += "   Timestamp           | Email                | Court   | Date       | Time | Status\n"
+                body += "   " + "-" * 80 + "\n"
                 
-                # Add log entries (limit to most recent 20 for email readability)
-                for entry in booking_log_entries[:20]:
-                    row_data = []
-                    for header in headers:
-                        row_data.append(str(entry.get(header, '')))
-                    body += "   " + " | ".join(row_data) + "\n"
+                # Add log entries (limit to most recent 10 for email readability)
+                for entry in booking_log_entries[:10]:
+                    timestamp = str(entry.get('Timestamp', ''))[:19]  # Truncate timestamp
+                    email = str(entry.get('Email', ''))[:20]  # Truncate email
+                    court = str(entry.get('Court', ''))[:7]  # Truncate court
+                    date = str(entry.get('Date', ''))[:10]
+                    time = str(entry.get('Time', ''))[:4]
+                    status = str(entry.get('Status', ''))[:20]
+                    
+                    body += f"   {timestamp:<19} | {email:<20} | {court:<7} | {date:<10} | {time:<4} | {status}\n"
             else:
                 body += "   No log entries available\n"
             
@@ -429,43 +528,75 @@ This is an automated summary report from the Tennis Court Booking System.
     
     async def send_email(self, sender_email, recipient, subject, body, app_password):
         """Send a single email using Gmail SMTP."""
+        server = None
         try:
-            print(f"{get_timestamp()}     📧 SMTP: Connecting to Gmail...")
+            print(f"{get_timestamp()}     📧 SMTP: Preparing email to {recipient}")
+            print(f"{get_timestamp()}     📧 Subject: {subject}")
+            print(f"{get_timestamp()}     📧 Body length: {len(body)} characters")
             
             import smtplib
             from email.mime.text import MIMEText
             from email.mime.multipart import MIMEMultipart
             
+            # Validate inputs
+            if not sender_email or not recipient or not app_password:
+                raise ValueError(f"Missing email configuration: sender={bool(sender_email)}, recipient={bool(recipient)}, password={bool(app_password)}")
+            
+            # Create message
             msg = MIMEMultipart()
             msg['From'] = sender_email
             msg['To'] = recipient
             msg['Subject'] = subject
             
-            msg.attach(MIMEText(body, 'plain'))
+            msg.attach(MIMEText(body, 'plain', 'utf-8'))
             
-            print(f"{get_timestamp()}     📧 SMTP: Starting TLS connection...")
+            print(f"{get_timestamp()}     📧 SMTP: Connecting to Gmail SMTP server...")
             
-            # Connect to Gmail SMTP
-            server = smtplib.SMTP('smtp.gmail.com', 587)
+            # Connect to Gmail SMTP with timeout
+            server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
             server.starttls()
             
-            print(f"{get_timestamp()}     📧 SMTP: Logging in...")
+            print(f"{get_timestamp()}     📧 SMTP: Authenticating...")
             server.login(sender_email, app_password)
             
             print(f"{get_timestamp()}     📧 SMTP: Sending email...")
             
             # Send email
             text = msg.as_string()
-            server.sendmail(sender_email, recipient, text)
-            server.quit()
+            result = server.sendmail(sender_email, [recipient], text)
             
-            print(f"{get_timestamp()}     📧 SMTP: Email sent successfully")
+            # Check if there were any failed recipients
+            if result:
+                print(f"{get_timestamp()}     ⚠️ SMTP: Some recipients failed: {result}")
+            else:
+                print(f"{get_timestamp()}     ✅ SMTP: Email sent successfully to {recipient}")
             
-        except Exception as e:
-            print(f"{get_timestamp()} ❌ Error sending email to {recipient}: {e}")
-            import traceback
-            print(f"{get_timestamp()} 🔍 SMTP Error details: {traceback.format_exc()}")
+        except smtplib.SMTPAuthenticationError as e:
+            print(f"{get_timestamp()} ❌ SMTP Authentication failed for {sender_email}: {e}")
+            print(f"{get_timestamp()} 💡 Check your Gmail App Password is correct and enabled")
             raise
+        except smtplib.SMTPRecipientsRefused as e:
+            print(f"{get_timestamp()} ❌ SMTP Recipient {recipient} refused: {e}")
+            raise
+        except smtplib.SMTPServerDisconnected as e:
+            print(f"{get_timestamp()} ❌ SMTP Server disconnected: {e}")
+            raise
+        except smtplib.SMTPException as e:
+            print(f"{get_timestamp()} ❌ SMTP Error sending email to {recipient}: {e}")
+            raise
+        except Exception as e:
+            print(f"{get_timestamp()} ❌ Unexpected error sending email to {recipient}: {e}")
+            import traceback
+            print(f"{get_timestamp()} 🔍 Error details: {traceback.format_exc()}")
+            raise
+        finally:
+            # Always close the server connection
+            if server:
+                try:
+                    server.quit()
+                    print(f"{get_timestamp()}     📧 SMTP: Connection closed")
+                except:
+                    pass  # Ignore errors when closing
     
     def get_current_london_time(self):
         """Get current time in London timezone as formatted string."""

@@ -10,10 +10,19 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from utils import get_timestamp
 
 # --- Updated Screenshot Helper Function ---
-async def take_screenshot(page, reason, slot_details=None):
+async def take_screenshot(page, reason, slot_details=None, session=None):
     """
     Takes a full-page screenshot with a descriptive, timestamped filename
     and saves it to the 'screenshots' directory.
+    
+    Args:
+        page: Playwright page object
+        reason: Description of why screenshot was taken
+        slot_details: Optional slot details for filename
+        session: Optional BookingSession to track the screenshot
+    
+    Returns:
+        str: Path to the saved screenshot file, or None if failed
     """
     screenshot_dir = "screenshots"
     os.makedirs(screenshot_dir, exist_ok=True)
@@ -37,9 +46,25 @@ async def take_screenshot(page, reason, slot_details=None):
     
     try:
         await page.screenshot(path=filepath, full_page=True)
-        print(f"{get_timestamp()} 📸 Screenshot saved: {filepath}")
+        log_msg = f"{get_timestamp()} 📸 Screenshot saved: {filepath}"
+        
+        if session:
+            session.log_message(log_msg)
+            session.add_screenshot(filepath, reason)
+        else:
+            print(log_msg)
+        
+        return filepath
+        
     except Exception as e:
-        print(f"{get_timestamp()} ❌ Could not save screenshot. Error: {e}")
+        error_msg = f"{get_timestamp()} ❌ Could not save screenshot. Error: {e}"
+        
+        if session:
+            session.log_message(error_msg)
+        else:
+            print(error_msg)
+        
+        return None
 
 async def optimized_countdown_logging(seconds_to_wait):
     """

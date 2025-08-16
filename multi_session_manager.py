@@ -51,6 +51,30 @@ class BookingSession:
         # Booking results
         self.successful_bookings = []
         self.failed_bookings = []
+        
+        # Session logging and screenshots
+        self.session_logs = []  # Capture all terminal output for this session
+        self.screenshots_taken = []  # Track all screenshots taken during this session
+        self.log_start_time = None
+    
+    def log_message(self, message):
+        """Capture a log message for this session."""
+        from utils import get_london_datetime
+        timestamp = get_london_datetime().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Include milliseconds
+        log_entry = f"[{timestamp}] {message}"
+        self.session_logs.append(log_entry)
+        print(message)  # Still print to terminal
+    
+    def add_screenshot(self, screenshot_path, description=""):
+        """Track a screenshot taken during this session."""
+        from utils import get_london_datetime
+        timestamp = get_london_datetime().strftime('%Y-%m-%d %H:%M:%S')
+        screenshot_info = {
+            'path': screenshot_path,
+            'description': description,
+            'timestamp': timestamp
+        }
+        self.screenshots_taken.append(screenshot_info)
     
     async def initialize_browser(self, headless=None):
         """Initialize the browser session."""
@@ -59,13 +83,13 @@ class BookingSession:
             if headless is None:
                 headless = os.environ.get('HEADLESS_MODE', 'True').lower() == 'true'
                 
-            print(f"{get_timestamp()} --- Initializing browser for {self.account_name} ({self.court_number}) ---")
+            self.log_message(f"{get_timestamp()} --- Initializing browser for {self.account_name} ({self.court_number}) ---")
             
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(headless=headless)
             self.page = await self.browser.new_page()
             
-            print(f"{get_timestamp()} ✅ Browser initialized for {self.account_name} (headless={headless})")
+            self.log_message(f"{get_timestamp()} ✅ Browser initialized for {self.account_name} (headless={headless})")
             return True
             
         except Exception as e:
@@ -480,7 +504,9 @@ class MultiSessionManager:
                 'court_url': session.court_url,
                 'successful_bookings': session.successful_bookings,
                 'failed_bookings': session.failed_bookings,
-                'total_attempts': len(session.successful_bookings) + len(session.failed_bookings)
+                'total_attempts': len(session.successful_bookings) + len(session.failed_bookings),
+                'session_logs': session.session_logs,  # Include all terminal output for this session
+                'screenshots_taken': session.screenshots_taken  # Include all screenshots taken
             }
             session_details.append(session_info)
         

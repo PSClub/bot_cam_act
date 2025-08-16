@@ -3,7 +3,6 @@
 
 import asyncio
 import os
-import pytz
 from datetime import datetime
 from playwright.async_api import async_playwright, Browser, Page
 from sheets_manager import SheetsManager
@@ -15,12 +14,7 @@ from browser_actions import (
     checkout_basket,
     take_screenshot
 )
-
-def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
-    uk_tz = pytz.timezone('Europe/London')
-    london_time = datetime.now(uk_tz)
-    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
+from utils import get_timestamp
 
 class BookingSession:
     """Represents a single booking session for one court/email combination."""
@@ -146,8 +140,8 @@ class BookingSession:
                     self.successful_bookings.append(slot_details)
                     
                     # Log successful booking
-                    uk_tz = pytz.timezone('Europe/London')
-                    london_time = datetime.now(uk_tz)
+                    from utils import get_london_datetime
+                    london_time = get_london_datetime()
                     log_entry = {
                         'Timestamp': london_time.strftime('%Y-%m-%d %H:%M:%S'),
                         'Email': self.email,
@@ -165,8 +159,8 @@ class BookingSession:
                     self.failed_bookings.append(slot_details)
                     
                     # Log failed booking
-                    uk_tz = pytz.timezone('Europe/London')
-                    london_time = datetime.now(uk_tz)
+                    from utils import get_london_datetime
+                    london_time = get_london_datetime()
                     log_entry = {
                         'Timestamp': london_time.strftime('%Y-%m-%d %H:%M:%S'),
                         'Email': self.email,

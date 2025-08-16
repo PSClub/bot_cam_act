@@ -7,12 +7,7 @@ import asyncio
 import time
 from datetime import datetime
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-
-def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
-    uk_tz = pytz.timezone('Europe/London')
-    london_time = datetime.now(uk_tz)
-    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
+from utils import get_timestamp
 
 # --- Updated Screenshot Helper Function ---
 async def take_screenshot(page, reason, slot_details=None):
@@ -124,7 +119,8 @@ async def wait_until_midnight():
             print(f"{get_timestamp()} ⏰ Final countdown: {seconds_to_wait} seconds until midnight...")
             await optimized_countdown_logging(seconds_to_wait)
         else:
-            await asyncio.sleep(0.1)
+            # More efficient polling: check every 5 seconds instead of every 0.1 seconds
+            await asyncio.sleep(5)
 
 async def rapid_advance_to_target_week(page, target_date_str, slot_details):
     """Rapidly click Next Week until we find the target date or reach the end."""
@@ -135,10 +131,13 @@ async def rapid_advance_to_target_week(page, target_date_str, slot_details):
     
     for i in range(20):  # Increased limit for rapid advancement
         # Check if target date is visible
-        if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=500):
-            print(f"{get_timestamp()} ✅ Found target date '{formatted_date}' after rapid advancement!")
-            await take_screenshot(page, "rapid_advance_success", slot_details)
-            return True
+        try:
+            if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=500):
+                print(f"{get_timestamp()} ✅ Found target date '{formatted_date}' after rapid advancement!")
+                await take_screenshot(page, "rapid_advance_success", slot_details)
+                return True
+        except:
+            pass
         
         # Try to click Next Week
         try:
@@ -146,24 +145,27 @@ async def rapid_advance_to_target_week(page, target_date_str, slot_details):
             if await next_week_button.is_visible(timeout=500):
                 await next_week_button.click()
                 
-                # Fast but reliable loading check - wait for DOM content, not all network
-                await page.wait_for_load_state('domcontentloaded', timeout=2000)
-                
-                # Additional check: ensure the calendar dates have actually changed
-                # This is faster than networkidle but ensures content loaded
+                # Wait for calendar content to update using Playwright's built-in waits
                 try:
+                    # Wait for the calendar to actually change by checking for new content
                     await page.wait_for_function(
                         """
                         () => {
                             const headers = document.querySelectorAll('h4.timetable-title');
-                            return headers.length > 0; // Ensure calendar headers exist
+                            return headers.length > 0 && headers[0].textContent.trim() !== '';
                         }
                         """,
-                        timeout=1500
+                        timeout=2000
                     )
                 except:
-                    # If timing out, add small delay but keep going
-                    await asyncio.sleep(0.2)
+                    # If the function times out, use a more reliable approach
+                    await page.wait_for_load_state('domcontentloaded', timeout=3000)
+                    
+                    # Additional verification that calendar content loaded
+                    try:
+                        await page.wait_for_selector('h4.timetable-title', timeout=2000)
+                    except:
+                        print(f"{get_timestamp()} ⚠️ Calendar content not loading properly, continuing...")
             else:
                 print(f"{get_timestamp()} ❌ No more weeks available")
                 break
@@ -177,16 +179,19 @@ async def rapid_advance_to_target_week(page, target_date_str, slot_details):
     try:
         # Handle potential form resubmission dialog
         page.on("dialog", lambda dialog: dialog.accept())
-        await page.wait_for_load_state('networkidle', timeout=10000)
+        await page.wait_for_load_state('domcontentloaded', timeout=10000)
         print(f"{get_timestamp()} ✅ Page refreshed successfully")
     except:
         print(f"{get_timestamp()} ⚠️ Page refresh had issues, continuing...")
     
     # Check again after refresh
-    if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=2000):
-        print(f"{get_timestamp()} ✅ Found target date '{formatted_date}' after refresh!")
-        await take_screenshot(page, "rapid_advance_after_refresh", slot_details)
-        return True
+    try:
+        if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=2000):
+            print(f"{get_timestamp()} ✅ Found target date '{formatted_date}' after refresh!")
+            await take_screenshot(page, "rapid_advance_after_refresh", slot_details)
+            return True
+    except:
+        pass
     
     return False
 

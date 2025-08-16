@@ -3,18 +3,12 @@
 
 import asyncio
 import os
-import pytz
 from datetime import datetime, timedelta
 from sheets_manager import SheetsManager
 from multi_session_manager import MultiSessionManager
 from robust_parser import normalize_day_name, normalize_time, get_slots_for_day, parse_booking_schedule
 from config import GSHEET_MAIN_ID, GOOGLE_SERVICE_ACCOUNT_JSON, SHOW_BROWSER
-
-def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
-    uk_tz = pytz.timezone('Europe/London')
-    london_time = datetime.now(uk_tz)
-    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
+from utils import get_timestamp
 
 class BookingOrchestrator:
     """Orchestrates the entire multi-court booking process."""
@@ -92,8 +86,8 @@ class BookingOrchestrator:
         """Calculate the target date (35 days from today)."""
         try:
             # Get current date in UK timezone
-            uk_tz = pytz.timezone('Europe/London')
-            today = datetime.now(uk_tz).date()
+            from utils import get_london_datetime
+            today = get_london_datetime().date()
             
             # Calculate target date (35 days from today)
             self.target_date = today + timedelta(days=35)
@@ -205,8 +199,8 @@ class BookingOrchestrator:
                     print(f"{get_timestamp()}   - {date} {time}")
             
             # Log summary to Google Sheets
-            uk_tz = pytz.timezone('Europe/London')
-            london_time = datetime.now(uk_tz)
+            from utils import get_london_datetime
+            london_time = get_london_datetime()
             summary_log_entry = {
                 'Timestamp': london_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'Email': 'SYSTEM',
@@ -474,9 +468,8 @@ This is an automated summary report from the Tennis Court Booking System.
     
     def get_current_london_time(self):
         """Get current time in London timezone as formatted string."""
-        uk_tz = pytz.timezone('Europe/London')
-        london_time = datetime.now(uk_tz)
-        return london_time.strftime('%Y-%m-%d %H:%M:%S')
+        from utils import get_current_london_time
+        return get_current_london_time()
 
 async def main():
     """Main function to run the booking orchestrator."""

@@ -3,17 +3,11 @@
 
 import json
 import pandas as pd
-import pytz
 from datetime import datetime
 from google.oauth2 import service_account
 import gspread
 from gspread.exceptions import WorksheetNotFound, APIError
-
-def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
-    uk_tz = pytz.timezone('Europe/London')
-    london_time = datetime.now(uk_tz)
-    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
+from utils import get_timestamp
 
 class SheetsManager:
     """Manages all Google Sheets operations for the booking system."""
@@ -369,8 +363,8 @@ def test_sheets_connection(sheet_id, service_account_json):
         print(f"{get_timestamp()} 📅 Schedule entries: {len(schedule_data)}")
         
         # Test writing to log
-        uk_tz = pytz.timezone('Europe/London')
-        london_time = datetime.now(uk_tz)
+        from utils import get_london_datetime
+        london_time = get_london_datetime()
         test_log_entry = {
             'Timestamp': london_time.strftime('%Y-%m-%d %H:%M:%S'),
             'Email': 'test@example.com',

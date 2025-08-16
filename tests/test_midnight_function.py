@@ -17,8 +17,10 @@ class TestMidnightFunction:
     """Test class for midnight-related functions."""
     
     async def test_optimized_countdown_logging_5_seconds(self):
-        """Test countdown logging for 5 seconds."""
-        with patch('asyncio.sleep') as mock_sleep:
+        """Test countdown logging for 5 seconds and verify output messages."""
+        with patch('asyncio.sleep') as mock_sleep, \
+             patch('builtins.print') as mock_print:
+            
             # Mock the function to return after each sleep call
             call_count = 0
             def mock_sleep_side_effect(seconds):
@@ -39,10 +41,24 @@ class TestMidnightFunction:
             assert mock_sleep.call_count == 5
             for call in mock_sleep.call_args_list:
                 assert call == ((1,),)
+            
+            # Verify countdown messages were printed
+            print_calls = [call.args[0] for call in mock_print.call_args_list]
+            countdown_messages = [msg for msg in print_calls if '⏰' in msg and 'remaining' in msg]
+            
+            # Should have 5 countdown messages (5, 4, 3, 2, 1 seconds)
+            assert len(countdown_messages) == 5
+            
+            # Verify countdown sequence
+            expected_counts = ['5 seconds', '4 seconds', '3 seconds', '2 seconds', '1 second']
+            for i, expected in enumerate(expected_counts):
+                assert expected in countdown_messages[i]
     
     async def test_optimized_countdown_logging_15_seconds(self):
-        """Test countdown logging for 15 seconds."""
-        with patch('asyncio.sleep') as mock_sleep:
+        """Test countdown logging for 15 seconds and verify message content."""
+        with patch('asyncio.sleep') as mock_sleep, \
+             patch('builtins.print') as mock_print:
+            
             # Mock the function to return after each sleep call  
             call_count = 0
             def mock_sleep_side_effect(seconds):
@@ -67,6 +83,17 @@ class TestMidnightFunction:
             final_calls = mock_sleep.call_args_list[-5:]
             for call in final_calls:
                 assert call == ((1,),)
+            
+            # Verify countdown messages structure
+            print_calls = [call.args[0] for call in mock_print.call_args_list]
+            countdown_messages = [msg for msg in print_calls if '⏰' in msg and 'remaining' in msg]
+            
+            # Should have initial 10-second countdown and final 1-second countdowns
+            assert len(countdown_messages) >= 5  # At least final 5 countdown messages
+            
+            # Check that final countdown messages are present
+            final_countdown_msgs = [msg for msg in countdown_messages if any(num in msg for num in ['5 seconds', '4 seconds', '3 seconds', '2 seconds', '1 second'])]
+            assert len(final_countdown_msgs) >= 5
 
 
 async def run_tests():

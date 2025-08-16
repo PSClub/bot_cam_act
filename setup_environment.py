@@ -6,14 +6,7 @@ This script helps configure environment variables and test Google Sheets access.
 
 import os
 import json
-import pytz
-from datetime import datetime
-
-def get_timestamp():
-    """Returns a timestamp string with 100ths of seconds in London UK timezone."""
-    uk_tz = pytz.timezone('Europe/London')
-    london_time = datetime.now(uk_tz)
-    return f"[{london_time.strftime('%H:%M:%S.%f')[:-4]}]"
+from utils import get_timestamp
 
 def setup_environment():
     """Interactive setup for environment variables."""

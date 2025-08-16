@@ -502,7 +502,11 @@ async def checkout_basket(page, basket_url, card_number=None, expiry_month=None,
             await take_screenshot(page, "payment_final_fail")
             return False
 
+    except PlaywrightTimeoutError as e:
+        print(f"{get_timestamp()} ❌ Timeout during checkout process: {e}")
+        await take_screenshot(page, "checkout_timeout_error")
+        return False
     except Exception as e:
-        print(f"{get_timestamp()} ❌ An error occurred during checkout: {e}")
+        print(f"{get_timestamp()} ❌ Unexpected error during checkout: {e}")
         await take_screenshot(page, "checkout_critical_error")
         return False

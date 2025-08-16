@@ -1,88 +1,168 @@
 #!/usr/bin/env python3
 """
-Test script for Google Sheets data download functionality.
-This script can be used to verify that the Google Sheets integration is working correctly.
+Test script for Google Sheets integration with the new multi-court booking system.
+This script verifies that the Google Sheets integration is working correctly.
 """
 
 import os
 import sys
-from data_processor import download_data_from_gsheets, process_booking_file
+import json
+
+# Add the parent directory to the path so we can import our modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from sheets_manager import SheetsManager
+from utils import get_timestamp
 
 def test_gsheets_integration():
     """Test the Google Sheets integration with environment variables."""
     
-    print("=== Testing Google Sheets Integration ===\n")
+    print(f"{get_timestamp()} === Testing Google Sheets Integration ===\n")
     
     # Get environment variables
     sheet_id = os.environ.get("GSHEET_CAM_ID")
-    tab_name = "camden_active_booking_dates"  # Fixed tab name
     service_account_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
     
     # Check if environment variables are set
     if not sheet_id:
-        print("❌ GSHEET_CAM_ID environment variable not set")
+        print(f"{get_timestamp()} ❌ GSHEET_CAM_ID environment variable not set")
         return False
     
     if not service_account_json:
-        print("❌ GOOGLE_SERVICE_ACCOUNT_JSON environment variable not set")
+        print(f"{get_timestamp()} ❌ GOOGLE_SERVICE_ACCOUNT_JSON environment variable not set")
         return False
     
-    print(f"✅ GSHEET_CAM_ID: {sheet_id}")
-    print(f"✅ Tab Name: {tab_name}")
-    print(f"✅ GOOGLE_SERVICE_ACCOUNT_JSON: {'*' * 20}... (hidden for security)")
+    print(f"{get_timestamp()} ✅ GSHEET_CAM_ID: {sheet_id}")
+    print(f"{get_timestamp()} ✅ GOOGLE_SERVICE_ACCOUNT_JSON: {'*' * 20}... (hidden for security)")
     print()
     
-    # Test direct download
-    print("--- Testing direct Google Sheets download ---")
-    df = download_data_from_gsheets(sheet_id, tab_name, service_account_json)
-    
-    if df is not None:
-        print("✅ Successfully downloaded Google Sheets data")
-        print(f"📊 Data shape: {df.shape[0]} rows, {df.shape[1]} columns")
-        print(f"📋 Columns: {', '.join(df.columns.tolist())}")
-        print("📋 First 3 rows:")
-        print(df.head(3).to_string())
-        print()
-    else:
-        print("❌ Failed to download Google Sheets data")
-        return False
-    
-    # Test full processing pipeline
-    print("--- Testing full booking file processing ---")
-    local_backup_file = "ca_lif_booking_dates.csv"
-    
     try:
-        slots = process_booking_file(local_backup_file, sheet_id, tab_name, service_account_json)
-        if slots:
-            print(f"✅ Successfully processed {len(slots)} booking slots")
-            print("📅 Sample bookings:")
-            for i, slot in enumerate(slots[:3]):  # Show first 3 slots
-                court_name = slot[0].split('/')[-2] if '/' in slot[0] else slot[0]
-                print(f"  {i+1}. {court_name} on {slot[1]} at {slot[2]}")
-            if len(slots) > 3:
-                print(f"  ... and {len(slots) - 3} more")
-        else:
-            print("⚠️ No booking slots found (this might be normal if no slots are in the 33-35 day window)")
+        # Initialize the SheetsManager
+        print(f"{get_timestamp()} --- Initializing SheetsManager ---")
+        sheets_manager = SheetsManager(sheet_id, service_account_json)
+        print(f"{get_timestamp()} ✅ SheetsManager initialized successfully")
         print()
+        
+        # Test sheet info
+        print(f"{get_timestamp()} --- Testing sheet information ---")
+        sheet_info = sheets_manager.get_sheet_info()
+        if sheet_info:
+            print(f"{get_timestamp()} ✅ Sheet info retrieved:")
+            print(f"{get_timestamp()} 📋 Title: {sheet_info.get('title', 'N/A')}")
+            print(f"{get_timestamp()} 📋 Worksheets: {len(sheet_info.get('worksheets', []))}")
+            for ws in sheet_info.get('worksheets', []):
+                print(f"{get_timestamp()}   - {ws}")
+        else:
+            print(f"{get_timestamp()} ❌ Failed to get sheet information")
+            return False
+        print()
+        
+        # Test reading configuration sheet
+        print(f"{get_timestamp()} --- Testing Account & Court Configuration sheet ---")
+        try:
+            config_data = sheets_manager.read_configuration_sheet()
+            if config_data:
+                print(f"{get_timestamp()} ✅ Successfully read {len(config_data)} configuration entries")
+                print(f"{get_timestamp()} 📋 Sample configuration:")
+                for i, entry in enumerate(config_data[:3]):  # Show first 3 entries
+                    print(f"{get_timestamp()}   {i+1}. Account: {entry.get('Account', 'N/A')}, Court: {entry.get('Court Number', 'N/A')}")
+                if len(config_data) > 3:
+                    print(f"{get_timestamp()}   ... and {len(config_data) - 3} more")
+            else:
+                print(f"{get_timestamp()} ⚠️ No configuration data found")
+        except Exception as e:
+            print(f"{get_timestamp()} ❌ Error reading configuration sheet: {e}")
+            return False
+        print()
+        
+        # Test reading booking schedule sheet
+        print(f"{get_timestamp()} --- Testing Booking Schedule sheet ---")
+        try:
+            schedule_data = sheets_manager.read_booking_schedule_sheet()
+            if schedule_data:
+                print(f"{get_timestamp()} ✅ Successfully read {len(schedule_data)} schedule entries")
+                print(f"{get_timestamp()} 📋 Sample schedule:")
+                for i, entry in enumerate(schedule_data[:5]):  # Show first 5 entries
+                    print(f"{get_timestamp()}   {i+1}. {entry.get('Day', 'N/A')} at {entry.get('Time', 'N/A')} - {entry.get('Notes', 'N/A')}")
+                if len(schedule_data) > 5:
+                    print(f"{get_timestamp()}   ... and {len(schedule_data) - 5} more")
+            else:
+                print(f"{get_timestamp()} ⚠️ No schedule data found")
+        except Exception as e:
+            print(f"{get_timestamp()} ❌ Error reading booking schedule sheet: {e}")
+            return False
+        print()
+        
+        # Test writing to booking log
+        print(f"{get_timestamp()} --- Testing Booking Log write ---")
+        try:
+            test_log_entry = {
+                'Timestamp': '2024-01-01 12:00:00',
+                'Email': 'test@example.com',
+                'Court': 'Test Court',
+                'Date': '2024-02-01',
+                'Time': '1800',
+                'Status': 'Test Entry',
+                'Error Details': 'This is a test entry from automated tests'
+            }
+            sheets_manager.write_booking_log(test_log_entry)
+            print(f"{get_timestamp()} ✅ Successfully wrote test entry to booking log")
+        except Exception as e:
+            print(f"{get_timestamp()} ❌ Error writing to booking log: {e}")
+            return False
+        print()
+        
+        # Test reading from booking log (with pagination)
+        print(f"{get_timestamp()} --- Testing Booking Log read with pagination ---")
+        try:
+            log_result = sheets_manager.read_booking_log(limit=5, offset=0)
+            if log_result['entries']:
+                print(f"{get_timestamp()} ✅ Successfully read booking log")
+                print(f"{get_timestamp()} 📊 Total entries: {log_result['total_count']}")
+                print(f"{get_timestamp()} 📊 Retrieved: {len(log_result['entries'])}")
+                print(f"{get_timestamp()} 📊 Has more: {log_result['has_more']}")
+                print(f"{get_timestamp()} 📋 Recent entries:")
+                for i, entry in enumerate(log_result['entries'][:3]):
+                    status = entry.get('Status', 'N/A')
+                    timestamp = entry.get('Timestamp', 'N/A')
+                    print(f"{get_timestamp()}   {i+1}. {timestamp} - {status}")
+            else:
+                print(f"{get_timestamp()} ⚠️ No log entries found (this might be normal for a new sheet)")
+        except Exception as e:
+            print(f"{get_timestamp()} ❌ Error reading booking log: {e}")
+            return False
+        print()
+        
+        # Test connection verification
+        print(f"{get_timestamp()} --- Testing connection verification ---")
+        connection_test = sheets_manager.test_sheets_connection()
+        if connection_test:
+            print(f"{get_timestamp()} ✅ Connection test passed")
+        else:
+            print(f"{get_timestamp()} ❌ Connection test failed")
+            return False
+        
     except Exception as e:
-        print(f"❌ Error processing booking file: {e}")
+        print(f"{get_timestamp()} ❌ Unexpected error during testing: {e}")
+        import traceback
+        traceback.print_exc()
         return False
     
-    print("🎉 Google Sheets integration test completed successfully!")
+    print(f"{get_timestamp()} 🎉 Google Sheets integration test completed successfully!")
     return True
 
 def main():
     """Main function to run the test."""
     
-    print("Google Sheets Integration Test")
-    print("=" * 40)
+    print(f"{get_timestamp()} Google Sheets Integration Test")
+    print(f"{get_timestamp()}" + "=" * 40)
     print()
     
     if test_gsheets_integration():
-        print("\n✅ All tests passed! Google Sheets integration is working correctly.")
+        print(f"\n{get_timestamp()} ✅ All tests passed! Google Sheets integration is working correctly.")
         sys.exit(0)
     else:
-        print("\n❌ Some tests failed. Please check your configuration.")
+        print(f"\n{get_timestamp()} ❌ Some tests failed. Please check your configuration.")
         sys.exit(1)
 
 if __name__ == "__main__":

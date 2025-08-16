@@ -52,16 +52,20 @@ class BookingSession:
         self.successful_bookings = []
         self.failed_bookings = []
     
-    async def initialize_browser(self, headless=True):
+    async def initialize_browser(self, headless=None):
         """Initialize the browser session."""
         try:
+            # Use environment variable if headless not specified
+            if headless is None:
+                headless = os.environ.get('HEADLESS_MODE', 'True').lower() == 'true'
+                
             print(f"{get_timestamp()} --- Initializing browser for {self.account_name} ({self.court_number}) ---")
             
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(headless=headless)
             self.page = await self.browser.new_page()
             
-            print(f"{get_timestamp()} ✅ Browser initialized for {self.account_name}")
+            print(f"{get_timestamp()} ✅ Browser initialized for {self.account_name} (headless={headless})")
             return True
             
         except Exception as e:

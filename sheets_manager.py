@@ -182,28 +182,49 @@ class SheetsManager:
             print(f"{get_timestamp()} ❌ Error writing to booking log: {e}")
             raise
     
-    def read_booking_log(self, limit=50):
+    def read_booking_log(self, limit=50, offset=0, get_all=False):
         """
-        Read recent entries from the Booking Log sheet.
+        Read entries from the Booking Log sheet with pagination support.
         
         Args:
-            limit (int): Maximum number of recent entries to retrieve
+            limit (int): Maximum number of entries to retrieve per page
+            offset (int): Number of entries to skip from the beginning (after header)
+            get_all (bool): If True, retrieve all entries ignoring limit and offset
             
         Returns:
-            list: List of log entries as dictionaries
+            dict: Contains 'entries' (list), 'total_count', 'has_more', 'next_offset'
         """
         try:
-            print(f"{get_timestamp()} --- Reading Booking Log ---")
+            print(f"{get_timestamp()} --- Reading Booking Log (limit={limit}, offset={offset}, get_all={get_all}) ---")
             
             worksheet = self.spreadsheet.worksheet("Booking Log")
             all_values = worksheet.get_all_values()
             
             if len(all_values) <= 1:  # Only header or empty
-                return []
+                return {
+                    'entries': [],
+                    'total_count': 0,
+                    'has_more': False,
+                    'next_offset': 0
+                }
             
-            # Get headers and data rows
+            # Get headers and total data rows
             headers = all_values[0]
-            data_rows = all_values[1:limit+1] if len(all_values) > 1 else []
+            all_data_rows = all_values[1:]  # Exclude header
+            total_count = len(all_data_rows)
+            
+            # Apply pagination if not getting all
+            if get_all:
+                data_rows = all_data_rows
+                has_more = False
+                next_offset = 0
+            else:
+                # Apply offset and limit
+                start_idx = offset
+                end_idx = offset + limit
+                data_rows = all_data_rows[start_idx:end_idx]
+                has_more = end_idx < total_count
+                next_offset = end_idx if has_more else 0
             
             # Convert to list of dictionaries
             log_entries = []
@@ -214,15 +235,32 @@ class SheetsManager:
                         entry[header] = row[i] if i < len(row) else ''
                     log_entries.append(entry)
             
-            print(f"{get_timestamp()} ✅ Successfully read {len(log_entries)} log entries")
-            return log_entries
+            result = {
+                'entries': log_entries,
+                'total_count': total_count,
+                'has_more': has_more,
+                'next_offset': next_offset
+            }
+            
+            print(f"{get_timestamp()} ✅ Retrieved {len(log_entries)} log entries (total: {total_count})")
+            return result
             
         except WorksheetNotFound:
             print(f"{get_timestamp()} ❌ Booking log sheet not found")
-            return []
+            return {
+                'entries': [],
+                'total_count': 0,
+                'has_more': False,
+                'next_offset': 0
+            }
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error reading booking log: {e}")
-            return []
+            return {
+                'entries': [],
+                'total_count': 0,
+                'has_more': False,
+                'next_offset': 0
+            }
     
     def update_booking_status(self, court, date, time, status, error_details=""):
         """

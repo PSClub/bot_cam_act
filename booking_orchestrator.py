@@ -244,7 +244,8 @@ class BookingOrchestrator:
             session_details = self.multi_session_manager.get_session_details()
             print(f"{get_timestamp()}   Session details collected: {len(session_details)} sessions")
             
-            booking_log_entries = self.sheets_manager.read_booking_log(limit=100)
+            booking_log_result = self.sheets_manager.read_booking_log(limit=100)
+            booking_log_entries = booking_log_result['entries']
             print(f"{get_timestamp()}   Booking log entries collected: {len(booking_log_entries)} entries")
             
             # Send individual session emails to IT_EMAIL_ADDRESS only

@@ -1,4 +1,4 @@
-# 🎾 Multi-Court Tennis Booking Bot for Camden Active
+# 🎾 Multi-Court Tennis Booking Bot for CA
 
 An advanced automated tennis court booking system that manages multiple courts simultaneously with comprehensive Google Sheets integration, robust email notifications, and intelligent scheduling.
 

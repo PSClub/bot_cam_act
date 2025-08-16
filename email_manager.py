@@ -176,16 +176,30 @@ class EmailManager:
                 body += "📸 No screenshots were taken during this session.\n"
             
             # Add full terminal logs
+            session_logs = session.get('session_logs', [])
             body += f"""
 
-📝 Complete Terminal Logs: {len(session.get('session_logs', []))} entries
+📝 Complete Terminal Logs: {len(session_logs)} entries
 """
             
-            if session.get('session_logs'):
+            if session_logs:
                 body += "📝 Full Terminal Output:\n"
                 body += "=" * 80 + "\n"
-                for log_entry in session['session_logs']:
-                    body += f"{log_entry}\n"
+                
+                # Check if logs are too long for email (Gmail has ~25MB limit, most clients handle ~2MB text well)
+                logs_text = "\n".join(session_logs)
+                if len(logs_text) > 1500000:  # 1.5MB limit to ensure delivery across all email clients
+                    # Include first 500KB and last 500KB with a note about truncation
+                    first_part = logs_text[:500000]
+                    last_part = logs_text[-500000:]
+                    truncation_note = f"\n\n[--- TRUNCATED: {len(logs_text) - 1000000} characters hidden for email delivery ---]\n\n"
+                    
+                    body += first_part + truncation_note + last_part + "\n"
+                    body += f"\n💡 FULL LOGS: Complete logs available in GitHub Actions output\n"
+                else:
+                    # Include all logs if under size limit
+                    body += logs_text + "\n"
+                
                 body += "=" * 80 + "\n"
             else:
                 body += "📝 No session logs were captured.\n"
@@ -222,6 +236,9 @@ Complete terminal logs and screenshot details are included above for debugging.
             
             subject = f"Tennis Court Booking Summary - {target_date.strftime('%d/%m/%Y')}"
             
+            # Calculate actual total slots attempted from session details
+            total_slots_attempted = sum(session.get('total_attempts', 0) for session in session_details)
+            
             # Create comprehensive summary body
             body = f"""🎾 Tennis Court Booking System - Summary Report
 
@@ -229,7 +246,7 @@ Complete terminal logs and screenshot details are included above for debugging.
 🏟️ Total Courts: {summary['total_sessions']}
 ✅ Successful Bookings: {summary['successful_bookings']}
 ❌ Failed Bookings: {summary['failed_bookings']}
-📝 Total Slots Attempted: {len(session_details) * 2 if session_details else 0}
+📝 Total Slots Attempted: {total_slots_attempted}
 
 📊 Session Summary:
 """
@@ -305,6 +322,32 @@ Complete terminal logs and screenshot details are included above for debugging.
                     body += f"   {timestamp:<19} | {email:<20} | {court:<7} | {date:<10} | {time:<4} | {status}\n"
             else:
                 body += "   No log entries available\n"
+            
+            # Add detailed individual slot status table
+            body += f"""
+
+📋 Individual Slot Status (Complete List):
+"""
+            
+            if session_details:
+                body += "   Court | Account | Date | Time | Status\n"
+                body += "   " + "-" * 50 + "\n"
+                
+                for session in session_details:
+                    court_short = session['court_number']
+                    account_short = session['account_name'][:8]  # Truncate for table formatting
+                    
+                    # Add successful bookings
+                    for booking in session['successful_bookings']:
+                        court_url, date, time = booking
+                        body += f"   {court_short:<6} | {account_short:<8} | {date} | {time} | ✅ SUCCESS\n"
+                    
+                    # Add failed bookings
+                    for booking in session['failed_bookings']:
+                        court_url, date, time = booking
+                        body += f"   {court_short:<6} | {account_short:<8} | {date} | {time} | ❌ FAILED\n"
+            else:
+                body += "   No slot attempts recorded\n"
             
             body += f"""
 

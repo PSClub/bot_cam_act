@@ -119,12 +119,12 @@ class BookingSession:
             await self.page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
             
             self.is_logged_in = True
-            print(f"{get_timestamp()} ✅ {self.account_name} logged in successfully")
+            self.log_message(f"{get_timestamp()} ✅ {self.account_name} logged in successfully")
             return True
             
         except Exception as e:
-            print(f"{get_timestamp()} ❌ Login failed for {self.account_name}: {e}")
-            await take_screenshot(self.page, f"login_failed_{self.account_name.lower()}")
+            self.log_message(f"{get_timestamp()} ❌ Login failed for {self.account_name}: {e}")
+            await take_screenshot(self.page, f"login_failed_{self.account_name.lower()}", session=self)
             return False
     
     async def book_slots_for_day(self, target_date, slots_to_book):
@@ -136,21 +136,29 @@ class BookingSession:
             slots_to_book (list): List of time slots to book (in HHMM format)
         """
         try:
-            print(f"{get_timestamp()} --- {self.account_name} booking {len(slots_to_book)} slots for {target_date} ---")
+            self.log_message(f"{get_timestamp()} --- {self.account_name} booking {len(slots_to_book)} slots for {target_date} ---")
             
             # Navigate to court if needed
             if self.current_court_url != self.court_url:
+                self.log_message(f"{get_timestamp()} 🏟️ Navigating to {self.court_number}...")
                 if not await navigate_to_court(self.page, self.court_url):
-                    print(f"{get_timestamp()} ❌ Failed to navigate to {self.court_number}")
+                    self.log_message(f"{get_timestamp()} ❌ Failed to navigate to {self.court_number}")
+                    await take_screenshot(self.page, f"navigation_failed_{self.court_number.lower()}", session=self)
                     return False
+                self.log_message(f"{get_timestamp()} ✅ Successfully navigated to {self.court_number}")
+                await take_screenshot(self.page, f"court_page_{self.court_number.lower()}", session=self)
                 self.current_court_url = self.court_url
                 self.current_date = None
             
             # Navigate to date if needed
             if self.current_date != target_date:
+                self.log_message(f"{get_timestamp()} 📅 Navigating to date {target_date}...")
                 if not await find_date_on_calendar(self.page, target_date, (self.court_url, target_date, slots_to_book[0]), False):
-                    print(f"{get_timestamp()} ❌ Failed to find date {target_date} for {self.court_number}")
+                    self.log_message(f"{get_timestamp()} ❌ Failed to find date {target_date} for {self.court_number}")
+                    await take_screenshot(self.page, f"date_not_found_{target_date.replace('/', '-')}", session=self)
                     return False
+                self.log_message(f"{get_timestamp()} ✅ Successfully navigated to date {target_date}")
+                await take_screenshot(self.page, f"date_found_{target_date.replace('/', '-')}", session=self)
                 self.current_date = target_date
             
             # Book each slot
@@ -158,7 +166,7 @@ class BookingSession:
             for slot_time in slots_to_book:
                 slot_details = (self.court_url, target_date, slot_time)
                 
-                print(f"{get_timestamp()} --- {self.account_name} booking {slot_time} on {target_date} ---")
+                self.log_message(f"{get_timestamp()} 🎯 {self.account_name} attempting to book {slot_time} on {target_date}")
                 
                 if await book_slot(self.page, target_date, slot_time, slot_details):
                     self.successful_bookings.append(slot_details)
@@ -175,7 +183,8 @@ class BookingSession:
                     )
                     self.sheets_manager.write_booking_log(log_entry)
                     
-                    print(f"{get_timestamp()} ✅ {self.account_name} successfully booked {slot_time}")
+                    self.log_message(f"{get_timestamp()} ✅ {self.account_name} successfully booked {slot_time}")
+                    await take_screenshot(self.page, f"booking_success_{slot_time}", session=self)
                     successful_slots += 1
                 else:
                     self.failed_bookings.append(slot_details)
@@ -191,24 +200,27 @@ class BookingSession:
                     )
                     self.sheets_manager.write_booking_log(log_entry)
                     
-                    print(f"{get_timestamp()} ❌ {self.account_name} failed to book {slot_time}")
+                    self.log_message(f"{get_timestamp()} ❌ {self.account_name} failed to book {slot_time}")
+                    await take_screenshot(self.page, f"booking_failed_{slot_time}", session=self)
+            
+            self.log_message(f"{get_timestamp()} 📊 Booking completed: {successful_slots} successful, {len(slots_to_book) - successful_slots} failed")
             
             # Return True if at least one slot was booked successfully
             return successful_slots > 0
             
         except Exception as e:
-            print(f"{get_timestamp()} ❌ Error booking slots for {self.account_name}: {e}")
-            await take_screenshot(self.page, f"booking_error_{self.account_name.lower()}")
+            self.log_message(f"{get_timestamp()} ❌ Error booking slots for {self.account_name}: {e}")
+            await take_screenshot(self.page, f"booking_error_{self.account_name.lower()}", session=self)
             return False
     
     async def checkout(self):
         """Process checkout for all successful bookings."""
         try:
             if not self.successful_bookings:
-                print(f"{get_timestamp()} --- {self.account_name} has no bookings to checkout ---")
+                self.log_message(f"{get_timestamp()} --- {self.account_name} has no bookings to checkout ---")
                 return True
             
-            print(f"{get_timestamp()} --- {self.account_name} checking out {len(self.successful_bookings)} bookings ---")
+            self.log_message(f"{get_timestamp()} --- {self.account_name} checking out {len(self.successful_bookings)} bookings ---")
             
             from config import (
                 BASKET_URL, LB_CARD_NUMBER, LB_CARD_EXPIRY_MONTH, LB_CARD_EXPIRY_YEAR,
@@ -222,15 +234,17 @@ class BookingSession:
             )
             
             if success:
-                print(f"{get_timestamp()} ✅ {self.account_name} checkout successful")
+                self.log_message(f"{get_timestamp()} ✅ {self.account_name} checkout successful")
+                await take_screenshot(self.page, f"checkout_success_{self.account_name.lower()}", session=self)
             else:
-                print(f"{get_timestamp()} ❌ {self.account_name} checkout failed")
+                self.log_message(f"{get_timestamp()} ❌ {self.account_name} checkout failed")
+                await take_screenshot(self.page, f"checkout_failed_{self.account_name.lower()}", session=self)
             
             return success
             
         except Exception as e:
-            print(f"{get_timestamp()} ❌ Error during checkout for {self.account_name}: {e}")
-            await take_screenshot(self.page, f"checkout_error_{self.account_name.lower()}")
+            self.log_message(f"{get_timestamp()} ❌ Error during checkout for {self.account_name}: {e}")
+            await take_screenshot(self.page, f"checkout_error_{self.account_name.lower()}", session=self)
             return False
     
     async def logout(self):
@@ -483,6 +497,14 @@ class MultiSessionManager:
     
     def get_booking_summary(self):
         """Get a summary of all booking results."""
+        # Ensure all bookings are collected from individual sessions
+        # This is crucial if all_successful_bookings/all_failed_bookings weren't populated properly
+        if not self.all_successful_bookings and not self.all_failed_bookings:
+            print(f"{get_timestamp()} ⚠️ Global booking lists empty, collecting from individual sessions...")
+            for session in self.sessions:
+                self.all_successful_bookings.extend(session.successful_bookings)
+                self.all_failed_bookings.extend(session.failed_bookings)
+        
         summary = {
             'total_sessions': len(self.sessions),
             'successful_bookings': len(self.all_successful_bookings),

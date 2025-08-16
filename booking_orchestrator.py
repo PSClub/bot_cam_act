@@ -9,6 +9,7 @@ from multi_session_manager import MultiSessionManager
 from robust_parser import normalize_day_name, normalize_time, get_slots_for_day, parse_booking_schedule
 from config import GSHEET_MAIN_ID, GOOGLE_SERVICE_ACCOUNT_JSON, SHOW_BROWSER
 from utils import get_timestamp
+from email_manager import EmailManager
 
 class BookingOrchestrator:
     """Orchestrates the entire multi-court booking process."""

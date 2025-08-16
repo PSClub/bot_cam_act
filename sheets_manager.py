@@ -54,21 +54,30 @@ class SheetsManager:
             print(f"{get_timestamp()} ❌ Failed to connect to Google Sheets: {e}")
             raise
     
-    def read_configuration_sheet(self):
+    def _read_worksheet_to_dicts(self, worksheet_name, description=""):
         """
-        Read the Account & Court Configuration sheet.
+        Private helper method to read a worksheet and convert to list of dictionaries.
+        Implements DRY principle for shared worksheet reading logic.
         
+        Args:
+            worksheet_name (str): Name of the worksheet to read
+            description (str): Optional description for logging
+            
         Returns:
-            list: List of dictionaries with account configuration
+            list: List of dictionaries with worksheet data
+            
+        Raises:
+            WorksheetNotFound: If worksheet doesn't exist
+            ValueError: If worksheet structure is invalid
         """
         try:
-            print(f"{get_timestamp()} --- Reading Configuration Sheet ---")
+            print(f"{get_timestamp()} --- Reading {worksheet_name} Sheet{' (' + description + ')' if description else ''} ---")
             
-            worksheet = self.spreadsheet.worksheet("Account & Court Configuration")
+            worksheet = self.spreadsheet.worksheet(worksheet_name)
             all_values = worksheet.get_all_values()
             
             if len(all_values) < 2:
-                raise ValueError("Configuration sheet must have at least a header row and one data row")
+                raise ValueError(f"{worksheet_name} sheet must have at least a header row and one data row")
             
             headers = all_values[0]
             data_rows = all_values[1:]
@@ -77,10 +86,10 @@ class SheetsManager:
             data_rows = [row for row in data_rows if any(cell.strip() for cell in row)]
             
             if not data_rows:
-                raise ValueError("No data rows found in configuration sheet")
+                raise ValueError(f"No data rows found in {worksheet_name} sheet")
             
             # Convert to list of dictionaries
-            config_data = []
+            sheet_data = []
             for row in data_rows:
                 row_dict = {}
                 for i, header in enumerate(headers):
@@ -88,17 +97,26 @@ class SheetsManager:
                         row_dict[header] = row[i]
                     else:
                         row_dict[header] = ""
-                config_data.append(row_dict)
+                sheet_data.append(row_dict)
             
-            print(f"{get_timestamp()} ✅ Successfully read {len(config_data)} configuration entries")
-            return config_data
+            print(f"{get_timestamp()} ✅ Successfully read {len(sheet_data)} entries from {worksheet_name}")
+            return sheet_data
             
         except WorksheetNotFound:
-            print(f"{get_timestamp()} ❌ Configuration sheet not found")
+            print(f"{get_timestamp()} ❌ {worksheet_name} sheet not found")
             raise
         except Exception as e:
-            print(f"{get_timestamp()} ❌ Error reading configuration sheet: {e}")
+            print(f"{get_timestamp()} ❌ Error reading {worksheet_name} sheet: {e}")
             raise
+    
+    def read_configuration_sheet(self):
+        """
+        Read the Account & Court Configuration sheet.
+        
+        Returns:
+            list: List of dictionaries with account configuration
+        """
+        return self._read_worksheet_to_dicts("Account & Court Configuration")
     
     def read_booking_schedule_sheet(self):
         """
@@ -107,44 +125,7 @@ class SheetsManager:
         Returns:
             list: List of dictionaries with booking schedule
         """
-        try:
-            print(f"{get_timestamp()} --- Reading Booking Schedule Sheet ---")
-            
-            worksheet = self.spreadsheet.worksheet("Booking Schedule")
-            all_values = worksheet.get_all_values()
-            
-            if len(all_values) < 2:
-                raise ValueError("Booking schedule sheet must have at least a header row and one data row")
-            
-            headers = all_values[0]
-            data_rows = all_values[1:]
-            
-            # Filter out empty rows
-            data_rows = [row for row in data_rows if any(cell.strip() for cell in row)]
-            
-            if not data_rows:
-                raise ValueError("No data rows found in booking schedule sheet")
-            
-            # Convert to list of dictionaries
-            schedule_data = []
-            for row in data_rows:
-                row_dict = {}
-                for i, header in enumerate(headers):
-                    if i < len(row):
-                        row_dict[header] = row[i]
-                    else:
-                        row_dict[header] = ""
-                schedule_data.append(row_dict)
-            
-            print(f"{get_timestamp()} ✅ Successfully read {len(schedule_data)} schedule entries")
-            return schedule_data
-            
-        except WorksheetNotFound:
-            print(f"{get_timestamp()} ❌ Booking schedule sheet not found")
-            raise
-        except Exception as e:
-            print(f"{get_timestamp()} ❌ Error reading booking schedule sheet: {e}")
-            raise
+        return self._read_worksheet_to_dicts("Booking Schedule")
     
     def write_booking_log(self, log_entry):
         """

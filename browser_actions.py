@@ -5,7 +5,7 @@ import os
 import pytz
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from utils import get_timestamp
 
@@ -111,16 +111,36 @@ async def wait_until_midnight():
     
     while True:
         now = datetime.now(london_tz)
+        
+        # Check if we've reached midnight
         if now.hour == 0 and now.minute == 0 and now.second == 0:
             print(f"{get_timestamp()} ✅ Midnight reached! Time: {now.strftime('%H:%M:%S')}")
             break
-        elif now.hour == 23 and now.minute == 59:
-            seconds_to_wait = 60 - now.second
-            print(f"{get_timestamp()} ⏰ Final countdown: {seconds_to_wait} seconds until midnight...")
-            await optimized_countdown_logging(seconds_to_wait)
+        
+        # Calculate seconds until midnight
+        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if now.hour == 23:
+            # If it's still 23:xx, calculate seconds until midnight
+            seconds_to_wait = (midnight + timedelta(days=1) - now).total_seconds()
         else:
-            # More efficient polling: check every 5 seconds instead of every 0.1 seconds
-            await asyncio.sleep(5)
+            # If it's past midnight but not exactly 00:00:00, calculate seconds until next midnight
+            seconds_to_wait = (midnight + timedelta(days=1) - now).total_seconds()
+        
+        # If we're within 60 seconds of midnight, start precise countdown
+        if seconds_to_wait <= 60:
+            print(f"{get_timestamp()} ⏰ Final countdown: {int(seconds_to_wait)} seconds until midnight...")
+            await optimized_countdown_logging(int(seconds_to_wait))
+        else:
+            # Calculate optimal sleep time (check every minute when far from midnight)
+            if seconds_to_wait > 300:  # More than 5 minutes
+                sleep_time = 60  # Check every minute
+            elif seconds_to_wait > 120:  # More than 2 minutes
+                sleep_time = 30  # Check every 30 seconds
+            else:
+                sleep_time = 10  # Check every 10 seconds when close
+            
+            print(f"{get_timestamp()} ⏰ {int(seconds_to_wait)} seconds until midnight, checking again in {sleep_time} seconds...")
+            await asyncio.sleep(sleep_time)
 
 async def rapid_advance_to_target_week(page, target_date_str, slot_details):
     """Rapidly click Next Week until we find the target date or reach the end."""

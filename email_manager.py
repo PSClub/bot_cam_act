@@ -2,8 +2,11 @@
 # Dedicated module for handling all email notifications
 
 import smtplib
+import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from utils import get_timestamp, get_current_london_time
 
 
@@ -27,14 +30,71 @@ class EmailManager:
         if not self.app_password:
             raise ValueError("Gmail app password is required")
     
-    async def send_email(self, recipient, subject, body):
+    def _attach_screenshots(self, msg, screenshot_paths):
         """
-        Send a single email using Gmail SMTP.
+        Attach screenshot files to the email message.
+        
+        Args:
+            msg (MIMEMultipart): Email message object
+            screenshot_paths (list): List of screenshot file paths to attach
+            
+        Returns:
+            int: Number of screenshots successfully attached
+        """
+        attached_count = 0
+        
+        for screenshot_path in screenshot_paths:
+            try:
+                # Check if file exists and is readable
+                if not os.path.exists(screenshot_path):
+                    print(f"{get_timestamp()}     📸 Screenshot not found: {screenshot_path}")
+                    continue
+                
+                if not os.path.isfile(screenshot_path):
+                    print(f"{get_timestamp()}     📸 Path is not a file: {screenshot_path}")
+                    continue
+                
+                # Get file size (Gmail has 25MB attachment limit)
+                file_size = os.path.getsize(screenshot_path)
+                if file_size > 20 * 1024 * 1024:  # 20MB safety limit
+                    print(f"{get_timestamp()}     📸 Screenshot too large ({file_size} bytes): {screenshot_path}")
+                    continue
+                
+                # Read and attach the file
+                with open(screenshot_path, 'rb') as attachment:
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(attachment.read())
+                
+                # Encode file in ASCII characters to send by email
+                encoders.encode_base64(part)
+                
+                # Add header as key/value pair to attachment part
+                filename = os.path.basename(screenshot_path)
+                part.add_header(
+                    'Content-Disposition',
+                    f'attachment; filename= {filename}',
+                )
+                
+                # Attach the part to message
+                msg.attach(part)
+                attached_count += 1
+                print(f"{get_timestamp()}     📸 Attached screenshot: {filename} ({file_size} bytes)")
+                
+            except Exception as e:
+                print(f"{get_timestamp()}     ❌ Failed to attach screenshot {screenshot_path}: {e}")
+                continue
+        
+        return attached_count
+
+    async def send_email(self, recipient, subject, body, screenshot_paths=None):
+        """
+        Send a single email using Gmail SMTP with optional screenshot attachments.
         
         Args:
             recipient (str): Email address to send to
             subject (str): Email subject line
             body (str): Email body content
+            screenshot_paths (list, optional): List of screenshot file paths to attach
             
         Raises:
             Exception: If email sending fails
@@ -44,6 +104,10 @@ class EmailManager:
             print(f"{get_timestamp()}     📧 SMTP: Preparing email to {recipient}")
             print(f"{get_timestamp()}     📧 Subject: {subject}")
             print(f"{get_timestamp()}     📧 Body length: {len(body)} characters")
+            
+            # Handle screenshots
+            if screenshot_paths:
+                print(f"{get_timestamp()}     📸 Screenshots to attach: {len(screenshot_paths)}")
             
             # Validate inputs
             if not recipient:
@@ -56,6 +120,12 @@ class EmailManager:
             msg['Subject'] = subject
             
             msg.attach(MIMEText(body, 'plain', 'utf-8'))
+            
+            # Attach screenshots if provided
+            attached_count = 0
+            if screenshot_paths:
+                attached_count = self._attach_screenshots(msg, screenshot_paths)
+                print(f"{get_timestamp()}     📸 Successfully attached {attached_count}/{len(screenshot_paths)} screenshots")
             
             print(f"{get_timestamp()}     📧 SMTP: Connecting to Gmail SMTP server...")
             
@@ -172,6 +242,7 @@ class EmailManager:
                 for i, screenshot in enumerate(session['screenshots_taken'], 1):
                     body += f"   {i}. {screenshot['timestamp']} - {screenshot['description']}\n"
                     body += f"      File: {screenshot['path']}\n"
+                body += "\n📎 Note: All screenshots are attached to this email for easy viewing.\n"
             else:
                 body += "📸 No screenshots were taken during this session.\n"
             
@@ -216,8 +287,18 @@ Complete terminal logs and screenshot details are included above for debugging.
             
             print(f"{get_timestamp()}   📧 Sending session email for {session['account_name']} to {recipient}")
             
-            # Send email
-            await self.send_email(recipient, subject, body)
+            # Collect screenshot paths for this session
+            screenshot_paths = []
+            if session.get('screenshots_taken'):
+                for screenshot in session['screenshots_taken']:
+                    screenshot_path = screenshot.get('path')
+                    if screenshot_path:
+                        screenshot_paths.append(screenshot_path)
+            
+            print(f"{get_timestamp()}   📸 Including {len(screenshot_paths)} screenshots as attachments")
+            
+            # Send email with screenshot attachments
+            await self.send_email(recipient, subject, body, screenshot_paths)
             print(f"{get_timestamp()} ✅ Session email sent for {session['account_name']}")
             
         except Exception as e:
@@ -355,16 +436,29 @@ Complete terminal logs and screenshot details are included above for debugging.
 🎯 Target Day: {target_day_name}
 🏟️ Courts: {summary['total_sessions']}
 
+📎 Note: All screenshots from all court booking sessions are attached to this email.
+
 This is an automated summary report from the Tennis Court Booking System.
             """.strip()
             
             print(f"{get_timestamp()}   📧 Summary email body prepared, length: {len(body)} characters")
             
+            # Collect all screenshot paths from all sessions for summary email
+            all_screenshot_paths = []
+            for session in session_details:
+                if session.get('screenshots_taken'):
+                    for screenshot in session['screenshots_taken']:
+                        screenshot_path = screenshot.get('path')
+                        if screenshot_path:
+                            all_screenshot_paths.append(screenshot_path)
+            
+            print(f"{get_timestamp()}   📸 Including {len(all_screenshot_paths)} screenshots from all sessions as attachments")
+            
             # Send to all recipients
             for recipient in recipients:
                 if recipient:
                     print(f"{get_timestamp()}   📧 Sending summary email to {recipient}")
-                    await self.send_email(recipient, subject, body)
+                    await self.send_email(recipient, subject, body, all_screenshot_paths)
                     print(f"{get_timestamp()} ✅ Summary email sent to {recipient}")
             
         except Exception as e:

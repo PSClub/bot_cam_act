@@ -166,7 +166,12 @@ async def wait_until_midnight():
         # If we're within 60 seconds of midnight, start precise countdown
         if seconds_to_wait <= 60:
             print(f"{get_timestamp()} ⏰ Final countdown: {int(seconds_to_wait)} seconds until midnight...")
-            await optimized_countdown_logging(int(seconds_to_wait))
+            try:
+                await optimized_countdown_logging(int(seconds_to_wait))
+            except Exception as e:
+                print(f"{get_timestamp()} ⚠️ Exception during countdown: {e}")
+                print(f"{get_timestamp()} Continuing execution despite timing error...")
+                return
         else:
             # Calculate optimal sleep time (check every minute when far from midnight)
             if seconds_to_wait > 300:  # More than 5 minutes
@@ -345,83 +350,22 @@ async def find_date_on_calendar(page, target_date_str, slot_details, is_strategi
             else:
                 print(log_msg)
             await wait_until_midnight()
-            
-            # Step 3: Rapid advancement after midnight
-            success = await rapid_advance_to_target_week(page, target_date_str, slot_details, session=session)
-            return success
         else:
-            log_msg = f"{get_timestamp()} ✅ Not near midnight, proceeding with normal booking..."
+            log_msg = f"{get_timestamp()} ✅ Not near midnight, proceeding immediately with rapid advancement..."
             if session:
                 session.log_message(log_msg)
             else:
                 print(log_msg)
-    
-    # Normal calendar navigation (original logic)
-    for i in range(15):
-        date_header_locator = page.locator("h4.timetable-title")
         
-        if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=1000):
-            log_msg = f"{get_timestamp()} ✅ Found date '{formatted_date}' on the calendar."
-            if session:
-                session.log_message(log_msg)
-            else:
-                print(log_msg)
-            await take_screenshot(page, "date_found_on_calendar", slot_details, session=session)
-            return True
-
-        visible_dates_before_click = await date_header_locator.all_inner_texts()
-        last_date_before_click = visible_dates_before_click[-1] if visible_dates_before_click else None
-        log_msg = f"{get_timestamp()}   - Latest date currently visible: {last_date_before_click}"
+        # Step 3: Rapid advancement (after midnight or immediately if not near midnight)
+        log_msg = f"{get_timestamp()} 🚀 Starting rapid advancement to find target date..."
         if session:
             session.log_message(log_msg)
         else:
             print(log_msg)
+        success = await rapid_advance_to_target_week(page, target_date_str, slot_details, session=session)
+        return success
 
-        try:
-            next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
-            await next_week_button.wait_for(state="visible", timeout=2000)
-            log_msg = f"{get_timestamp()}   - Clicking 'Next Week'..."
-            if session:
-                session.log_message(log_msg)
-            else:
-                print(log_msg)
-            await next_week_button.click()
-
-            await page.wait_for_function(
-                f"""
-                () => {{
-                    const headers = Array.from(document.querySelectorAll('h4.timetable-title'));
-                    const lastHeader = headers[headers.length - 1];
-                    return lastHeader && lastHeader.innerText !== '{last_date_before_click}';
-                }}
-                """,
-                timeout=15000
-            )
-            log_msg = f"{get_timestamp()}   - New week has loaded successfully."
-            if session:
-                session.log_message(log_msg)
-            else:
-                print(log_msg)
-            
-            # Take screenshot after each week advancement
-            await take_screenshot(page, f"week_advance_{i+1}", slot_details, session=session)
-
-        except PlaywrightTimeoutError:
-            log_msg = f"{get_timestamp()} ❌ Reached end of calendar, but did not find date {formatted_date}."
-            if session:
-                session.log_message(log_msg)
-            else:
-                print(log_msg)
-            await take_screenshot(page, "end_of_calendar", slot_details, session=session)
-            return False
-            
-    log_msg = f"{get_timestamp()} ❌ Searched 15 weeks but did not find {formatted_date}."
-    if session:
-        session.log_message(log_msg)
-    else:
-        print(log_msg)
-    await take_screenshot(page, f"date_not_found", slot_details, session=session)
-    return False
 
 async def book_slot(page, target_date_str, target_time_str, slot_details, session=None):
     """Finds a specific date/time slot by its unique href and clicks it."""

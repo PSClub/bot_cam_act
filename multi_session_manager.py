@@ -187,7 +187,7 @@ class BookingSession:
             # Navigate to date if needed
             if self.current_date != target_date:
                 self.log_message(f"{get_timestamp()} 📅 Navigating to date {target_date}...")
-                if not await find_date_on_calendar(self.page, target_date, (self.court_url, target_date, slots_to_book[0]), False, session=self):
+                if not await find_date_on_calendar(self.page, target_date, (self.court_url, target_date, slots_to_book[0]), True, session=self):
                     self.log_message(f"{get_timestamp()} ❌ Failed to find date {target_date} for {self.court_number}")
                     await take_screenshot(self.page, f"date_not_found_{target_date.replace('/', '-')}", session=self)
                     

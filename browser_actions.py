@@ -125,64 +125,219 @@ async def check_london_time_near_midnight():
     london_tz = pytz.timezone("Europe/London")
     now = datetime.now(london_tz)
     
-    # Calculate minutes until midnight
-    midnight = now.replace(hour=23, minute=50, second=0, microsecond=0)
-    minutes_to_ten_before_midnight = (midnight - now).total_seconds() / 60
-    
     print(f"{get_timestamp()} Current London time: {now.strftime('%H:%M:%S')}")
     
-    # Check if we're within 10 minutes of midnight (23:50 to 00:00)
+    # Check if we're within 10 minutes of midnight (23:50 to 00:10)
     if now.hour == 23 and now.minute >= 50:
+        # Between 23:50 and 23:59 - near midnight
         return True, now
-    elif now.hour == 0 and now.minute == 0:
+    elif now.hour == 0 and now.minute <= 10:
+        # Between 00:00 and 00:10 - just past midnight, still in window
         return True, now
     else:
         return False, now
 
 async def wait_until_midnight():
-    """Wait until exactly 00:00:00 London time."""
+    """Wait until exactly 00:00:01 London time with optimized logging."""
     import pytz
     import asyncio
     
-    london_tz = pytz.timezone("Europe/London")
-    
-    while True:
-        now = datetime.now(london_tz)
+    try:
+        london_tz = pytz.timezone("Europe/London")
         
-        # Check if we've reached midnight
-        if now.hour == 0 and now.minute == 0 and now.second == 0:
-            print(f"{get_timestamp()} ✅ Midnight reached! Time: {now.strftime('%H:%M:%S')}")
-            break
-        
-        # Calculate seconds until midnight
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if now.hour == 23:
-            # If it's still 23:xx, calculate seconds until midnight
-            seconds_to_wait = (midnight + timedelta(days=1) - now).total_seconds()
-        else:
-            # If it's past midnight but not exactly 00:00:00, calculate seconds until next midnight
-            seconds_to_wait = (midnight + timedelta(days=1) - now).total_seconds()
-        
-        # If we're within 60 seconds of midnight, start precise countdown
-        if seconds_to_wait <= 60:
-            print(f"{get_timestamp()} ⏰ Final countdown: {int(seconds_to_wait)} seconds until midnight...")
-            try:
-                await optimized_countdown_logging(int(seconds_to_wait))
-            except Exception as e:
-                print(f"{get_timestamp()} ⚠️ Exception during countdown: {e}")
-                print(f"{get_timestamp()} Continuing execution despite timing error...")
-                return
-        else:
-            # Calculate optimal sleep time (check every minute when far from midnight)
-            if seconds_to_wait > 300:  # More than 5 minutes
-                sleep_time = 60  # Check every minute
-            elif seconds_to_wait > 120:  # More than 2 minutes
-                sleep_time = 30  # Check every 30 seconds
-            else:
-                sleep_time = 10  # Check every 10 seconds when close
+        while True:
+            now = datetime.now(london_tz)
             
-            print(f"{get_timestamp()} ⏰ {int(seconds_to_wait)} seconds until midnight, checking again in {sleep_time} seconds...")
-            await asyncio.sleep(sleep_time)
+            # Calculate seconds until 00:00:01 of the next day
+            if now.hour == 0 and now.minute == 0 and now.second >= 1:
+                # We've already passed 00:00:01, exit immediately
+                print(f"{get_timestamp()} ✅ Target time 00:00:01 reached! Current: {now.strftime('%H:%M:%S')}")
+                break
+            
+            # Calculate target time (00:00:01 of next day if we're still in current day)
+            target_time = now.replace(hour=0, minute=0, second=1, microsecond=0) + timedelta(days=1)
+            seconds_to_wait = (target_time - now).total_seconds()
+            
+            # Exit if we're very close or past target
+            if seconds_to_wait <= 0:
+                print(f"{get_timestamp()} ✅ Target time 00:00:01 reached! Current: {now.strftime('%H:%M:%S')}")
+                break
+            
+            # Optimized logging based on time remaining
+            if seconds_to_wait <= 10:
+                # Last 10 seconds: log every second
+                print(f"{get_timestamp()} ⏰ {int(seconds_to_wait)} second{'s' if int(seconds_to_wait) != 1 else ''} until 00:00:01...")
+                await asyncio.sleep(1)
+            elif seconds_to_wait <= 60:
+                # Last minute: log every 10 seconds
+                print(f"{get_timestamp()} ⏰ {int(seconds_to_wait)} seconds until 00:00:01...")
+                await asyncio.sleep(10)
+            elif seconds_to_wait <= 600:
+                # Between 10-1 minutes: log every minute
+                minutes = int(seconds_to_wait / 60)
+                print(f"{get_timestamp()} ⏰ {minutes} minute{'s' if minutes != 1 else ''} until 00:00:01...")
+                await asyncio.sleep(60)
+            else:
+                # More than 10 minutes: log every minute but sleep for shorter periods
+                minutes = int(seconds_to_wait / 60)
+                print(f"{get_timestamp()} ⏰ {minutes} minutes until 00:00:01...")
+                await asyncio.sleep(30)  # Check more frequently to be responsive
+                
+        return True  # Successfully reached target time
+        
+    except Exception as e:
+        print(f"{get_timestamp()} ⚠️ Exception in wait_until_midnight: {e}")
+        print(f"{get_timestamp()} Continuing execution despite timing error...")
+        return False  # Failed to complete midnight wait
+
+async def post_midnight_calendar_advancement(page, target_date_str, slot_details, session=None):
+    """
+    Advanced post-midnight calendar navigation with timeout protection.
+    Attempts to find the target date with refreshes and dialog handling.
+    Exits after 2 minutes if date is not found.
+    """
+    import pytz
+    
+    london_tz = pytz.timezone("Europe/London")
+    start_time = datetime.now(london_tz)
+    timeout_minutes = 2
+    
+    date_obj = datetime.strptime(target_date_str, "%d/%m/%Y")
+    formatted_date = f"{date_obj.strftime('%a').upper()} {date_obj.day}/{date_obj.month}"
+    
+    log_msg = f"{get_timestamp()} 🚀 Post-midnight calendar advancement for '{formatted_date}'..."
+    if session:
+        session.log_message(log_msg)
+    else:
+        print(log_msg)
+    
+    # Set up dialog handler for any pop-ups
+    async def dialog_handler(dialog):
+        log_msg = f"{get_timestamp()} 🔄 Handling dialog: {dialog.message}"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+        await dialog.accept()
+    
+    page.on("dialog", dialog_handler)
+    
+    try:
+        for attempt in range(5):  # Maximum 5 attempts
+            current_time = datetime.now(london_tz)
+            elapsed = (current_time - start_time).total_seconds()
+            
+            # Check timeout (2 minutes = 120 seconds)
+            if elapsed > (timeout_minutes * 60):
+                log_msg = f"{get_timestamp()} ⏰ Timeout reached ({timeout_minutes} minutes). Exiting post-midnight advancement."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                return False
+            
+            log_msg = f"{get_timestamp()} 🔄 Attempt {attempt + 1}/5 to find target date..."
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
+            
+            # Check if target date is already visible
+            try:
+                if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=1000):
+                    log_msg = f"{get_timestamp()} ✅ Target date '{formatted_date}' found!"
+                    if session:
+                        session.log_message(log_msg)
+                    else:
+                        print(log_msg)
+                    await take_screenshot(page, "post_midnight_date_found", slot_details, session=session)
+                    return True
+            except:
+                pass
+            
+            # Try to advance the calendar
+            try:
+                next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
+                if await next_week_button.is_visible(timeout=1000):
+                    log_msg = f"{get_timestamp()} 📅 Clicking 'Next Week' to advance calendar..."
+                    if session:
+                        session.log_message(log_msg)
+                    else:
+                        print(log_msg)
+                    
+                    await next_week_button.click()
+                    
+                    # Wait for page to load
+                    await page.wait_for_load_state('domcontentloaded', timeout=3000)
+                    
+                    # Check for target date again
+                    try:
+                        if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=1000):
+                            log_msg = f"{get_timestamp()} ✅ Target date '{formatted_date}' found after advancement!"
+                            if session:
+                                session.log_message(log_msg)
+                            else:
+                                print(log_msg)
+                            await take_screenshot(page, "post_midnight_date_found_after_advance", slot_details, session=session)
+                            return True
+                    except:
+                        pass
+                else:
+                    log_msg = f"{get_timestamp()} ⚠️ Next Week button not visible, refreshing page..."
+                    if session:
+                        session.log_message(log_msg)
+                    else:
+                        print(log_msg)
+                    break  # Exit to refresh
+            except Exception as e:
+                log_msg = f"{get_timestamp()} ⚠️ Error during calendar advancement: {e}"
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                break  # Exit to refresh
+        
+        # If we get here, try refreshing the page
+        log_msg = f"{get_timestamp()} 🔄 Refreshing page to reload calendar..."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+        
+        await page.reload()
+        await page.wait_for_load_state('domcontentloaded', timeout=10000)
+        
+        # Final check after refresh
+        try:
+            if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=2000):
+                log_msg = f"{get_timestamp()} ✅ Target date '{formatted_date}' found after refresh!"
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                await take_screenshot(page, "post_midnight_date_found_after_refresh", slot_details, session=session)
+                return True
+        except:
+            pass
+        
+        # If still not found, exit
+        log_msg = f"{get_timestamp()} ❌ Target date '{formatted_date}' not found after all attempts."
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+        return False
+        
+    except Exception as e:
+        log_msg = f"{get_timestamp()} ❌ Error in post_midnight_calendar_advancement: {e}"
+        if session:
+            session.log_message(log_msg)
+        else:
+            print(log_msg)
+        return False
+    finally:
+        # Remove dialog handler
+        page.remove_listener("dialog", dialog_handler)
 
 async def rapid_advance_to_target_week(page, target_date_str, slot_details, session=None):
     """Rapidly click Next Week until we find the target date or reach the end."""
@@ -340,30 +495,68 @@ async def find_date_on_calendar(page, target_date_str, slot_details, is_strategi
                     print(log_msg)
                 break
         
-        # Step 2: Check if we're near midnight
-        near_midnight, current_time = await check_london_time_near_midnight()
+        # Initialize success flag
+        success = False
         
-        if near_midnight:
-            log_msg = f"{get_timestamp()} ⏰ Within 10 minutes of midnight - entering wait mode..."
+        try:
+            # Step 2: Check if we're near midnight
+            near_midnight, current_time = await check_london_time_near_midnight()
+            
+            if near_midnight:
+                log_msg = f"{get_timestamp()} ⏰ Within 10 minutes of midnight - entering wait mode..."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                
+                # Wait until midnight with error handling
+                midnight_success = await wait_until_midnight()
+                if midnight_success:
+                    log_msg = f"{get_timestamp()} ✅ Midnight wait completed successfully"
+                    if session:
+                        session.log_message(log_msg)
+                    else:
+                        print(log_msg)
+                else:
+                    log_msg = f"{get_timestamp()} ⚠️ Midnight wait failed or timed out"
+                    if session:
+                        session.log_message(log_msg)
+                    else:
+                        print(log_msg)
+                    # Still proceed with post-midnight logic as a fallback
+            else:
+                log_msg = f"{get_timestamp()} ✅ Not near midnight, proceeding immediately with rapid advancement..."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+            
+            # Step 3: Post-midnight advancement (after midnight or immediately if not near midnight)
+            if near_midnight:
+                # We waited until midnight, now use the advanced post-midnight function
+                log_msg = f"{get_timestamp()} 🚀 Starting post-midnight calendar advancement..."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                success = await post_midnight_calendar_advancement(page, target_date_str, slot_details, session=session)
+            else:
+                # Not near midnight, use rapid advancement
+                log_msg = f"{get_timestamp()} 🚀 Starting rapid advancement to find target date..."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                success = await rapid_advance_to_target_week(page, target_date_str, slot_details, session=session)
+        
+        except Exception as e:
+            log_msg = f"{get_timestamp()} ❌ Error in strategic timing logic: {e}"
             if session:
                 session.log_message(log_msg)
             else:
                 print(log_msg)
-            await wait_until_midnight()
-        else:
-            log_msg = f"{get_timestamp()} ✅ Not near midnight, proceeding immediately with rapid advancement..."
-            if session:
-                session.log_message(log_msg)
-            else:
-                print(log_msg)
+            success = False
         
-        # Step 3: Rapid advancement (after midnight or immediately if not near midnight)
-        log_msg = f"{get_timestamp()} 🚀 Starting rapid advancement to find target date..."
-        if session:
-            session.log_message(log_msg)
-        else:
-            print(log_msg)
-        success = await rapid_advance_to_target_week(page, target_date_str, slot_details, session=session)
         return success
 
 

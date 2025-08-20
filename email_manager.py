@@ -190,21 +190,31 @@ class EmailManager:
             if not recipient:
                 raise ValueError("Recipient email is required")
             
-            # Create message
-            msg = MIMEMultipart()
-            msg['From'] = self.sender_email
-            msg['To'] = recipient
-            msg['Subject'] = subject
-            
             # Embed screenshots inline if provided
             embedded_count = 0
             if screenshot_paths:
                 html_body, embedded_count = self._embed_screenshots_inline(body, screenshot_paths)
-                msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+                
+                # Create multipart message for HTML email with fallback
+                msg = MIMEMultipart('alternative')
+                msg['From'] = self.sender_email
+                msg['To'] = recipient
+                msg['Subject'] = subject
+                
+                # Add plain text version as fallback
+                text_part = MIMEText(body, 'plain', 'utf-8')
+                html_part = MIMEText(html_body, 'html', 'utf-8')
+                
+                msg.attach(text_part)
+                msg.attach(html_part)
+                
                 print(f"{get_timestamp()}     📸 Successfully embedded {embedded_count}/{len(screenshot_paths)} screenshots inline")
             else:
-                # No screenshots, send as plain text
-                msg.attach(MIMEText(body, 'plain', 'utf-8'))
+                # No screenshots, send as simple plain text
+                msg = MIMEText(body, 'plain', 'utf-8')
+                msg['From'] = self.sender_email
+                msg['To'] = recipient
+                msg['Subject'] = subject
             
             print(f"{get_timestamp()}     📧 SMTP: Connecting to Gmail SMTP server...")
             

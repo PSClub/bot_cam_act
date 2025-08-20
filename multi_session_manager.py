@@ -482,11 +482,13 @@ class MultiSessionManager:
                     # Even if the session failed, collect any failed bookings that were attempted
                     self.all_failed_bookings.extend(session.failed_bookings)
                 elif result:
-                    self.broadcast_message(f"{get_timestamp()} ✅ Booking completed for {session.account_name}")
+                    # Only print to console, don't broadcast to all session logs to avoid email leakage
+                    print(f"{get_timestamp()} ✅ Booking completed for {session.account_name}")
                     self.all_successful_bookings.extend(session.successful_bookings)
                     self.all_failed_bookings.extend(session.failed_bookings)
                 else:
-                    self.broadcast_message(f"{get_timestamp()} ❌ Booking failed for {session.account_name}")
+                    # Only print to console, don't broadcast to all session logs to avoid email leakage
+                    print(f"{get_timestamp()} ❌ Booking failed for {session.account_name}")
                     # Even if the session failed, collect any failed bookings that were attempted
                     self.all_failed_bookings.extend(session.failed_bookings)
             

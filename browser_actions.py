@@ -148,17 +148,24 @@ async def wait_until_midnight():
         while True:
             now = datetime.now(london_tz)
             
-            # Calculate seconds until 00:00:01 of the next day
+            # Check if we've reached or passed the target time (00:00:01)
             if now.hour == 0 and now.minute == 0 and now.second >= 1:
-                # We've already passed 00:00:01, exit immediately
+                # We've reached 00:00:01 or later, exit immediately
                 print(f"{get_timestamp()} ✅ Target time 00:00:01 reached! Current: {now.strftime('%H:%M:%S')}")
                 break
             
-            # Calculate target time (00:00:01 of next day if we're still in current day)
-            target_time = now.replace(hour=0, minute=0, second=1, microsecond=0) + timedelta(days=1)
+            # Calculate target time - if we're before midnight, target is 00:00:01 next day
+            # If we're after midnight but before 00:00:01, target is 00:00:01 same day
+            if now.hour == 0 and now.minute == 0 and now.second < 1:
+                # We're between 00:00:00 and 00:00:01, target is 00:00:01 today
+                target_time = now.replace(hour=0, minute=0, second=1, microsecond=0)
+            else:
+                # We're before midnight, target is 00:00:01 tomorrow
+                target_time = now.replace(hour=0, minute=0, second=1, microsecond=0) + timedelta(days=1)
+            
             seconds_to_wait = (target_time - now).total_seconds()
             
-            # Exit if we're very close or past target
+            # Exit if we're past target (shouldn't happen with logic above, but safety check)
             if seconds_to_wait <= 0:
                 print(f"{get_timestamp()} ✅ Target time 00:00:01 reached! Current: {now.strftime('%H:%M:%S')}")
                 break
@@ -265,10 +272,13 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
                     else:
                         print(log_msg)
                     
-                    await next_week_button.click()
+                    # Click with timeout and better error handling
+                    await next_week_button.click(timeout=10000)
                     
-                    # Wait for page to load
-                    await page.wait_for_load_state('domcontentloaded', timeout=3000)
+                    # Wait for page to load with longer timeout
+                    await page.wait_for_load_state('domcontentloaded', timeout=10000)
+                    # Give extra time for JavaScript calendar updates
+                    await asyncio.sleep(1)
                     
                     # Check for target date again
                     try:
@@ -476,14 +486,19 @@ async def find_date_on_calendar(page, target_date_str, slot_details, is_strategi
         for i in range(3):
             try:
                 next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
-                await next_week_button.wait_for(state="visible", timeout=2000)
+                # Increase timeout and use more robust waiting
+                await next_week_button.wait_for(state="visible", timeout=10000)
                 log_msg = f"{get_timestamp()}   - Clicking 'Next Week' ({i+1}/3)..."
                 if session:
                     session.log_message(log_msg)
                 else:
                     print(log_msg)
+                
+                # Click and wait for navigation with longer timeout
                 await next_week_button.click()
-                await page.wait_for_load_state('networkidle', timeout=5000)
+                await page.wait_for_load_state('domcontentloaded', timeout=15000)
+                # Give extra time for any JavaScript to update the calendar
+                await asyncio.sleep(1)
                 
                 # Take screenshot after each week advancement
                 await take_screenshot(page, f"week_advance_{i+1}", slot_details, session=session)
@@ -493,7 +508,8 @@ async def find_date_on_calendar(page, target_date_str, slot_details, is_strategi
                     session.log_message(log_msg)
                 else:
                     print(log_msg)
-                break
+                # Continue with other attempts instead of breaking completely
+                continue
         
         # Initialize success flag
         success = False
@@ -587,6 +603,32 @@ async def book_slot(page, target_date_str, target_time_str, slot_details, sessio
         
         # Take screenshot after adding to basket
         await take_screenshot(page, "slot_added_to_basket", slot_details, session=session)
+        
+        # Click back button to return to calendar for next slot booking
+        try:
+            back_button = page.locator("input[type='button'][value='Back']")
+            if await back_button.is_visible(timeout=2000):
+                log_msg = f"{get_timestamp()} 🔙 Clicking 'Back' button to return to calendar..."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                await back_button.click()
+                await page.wait_for_load_state('networkidle', timeout=10000)
+                await take_screenshot(page, "back_to_calendar", slot_details, session=session)
+            else:
+                log_msg = f"{get_timestamp()} ⚠️ Back button not found, continuing..."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+        except Exception as e:
+            log_msg = f"{get_timestamp()} ⚠️ Error clicking back button: {e}"
+            if session:
+                session.log_message(log_msg)
+            else:
+                print(log_msg)
+        
         return True
     except PlaywrightTimeoutError:
         log_msg = f"{get_timestamp()} ⚠️ Slot at {target_time_str} is not available or is already booked."

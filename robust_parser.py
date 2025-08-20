@@ -201,7 +201,7 @@ def get_slots_for_day(schedule_data, target_day):
         if row.get('Day') == target_day:
             slots.append(row.get('Time'))
     
-    return sorted(slots)  # Return sorted list of times
+    return sorted(slots, reverse=True)  # Return sorted list (later time first for competitive booking)
 
 def validate_schedule_data(schedule_data):
     """

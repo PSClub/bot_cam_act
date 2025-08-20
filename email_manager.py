@@ -3,8 +3,6 @@
 
 import smtplib
 import os
-import base64
-import mimetypes
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -32,159 +30,67 @@ class EmailManager:
         if not self.app_password:
             raise ValueError("Gmail app password is required")
     
-    def _attach_screenshots(self, msg, screenshot_paths):
+    
+
+    def _attach_screenshots_sorted(self, msg, screenshot_paths):
         """
-        Attach screenshot files to the email message.
-        
+        Attach screenshot files to the email message in sorted order.
+
         Args:
             msg (MIMEMultipart): Email message object
             screenshot_paths (list): List of screenshot file paths to attach
-            
+
         Returns:
             int: Number of screenshots successfully attached
         """
         attached_count = 0
         
-        for screenshot_path in screenshot_paths:
+        # Sort screenshots by filename in ascending order
+        sorted_screenshots = sorted(screenshot_paths, key=lambda path: os.path.basename(path))
+
+        for screenshot_path in sorted_screenshots:
             try:
                 # Check if file exists and is readable
                 if not os.path.exists(screenshot_path):
                     print(f"{get_timestamp()}     📸 Screenshot not found: {screenshot_path}")
                     continue
-                
+
                 if not os.path.isfile(screenshot_path):
                     print(f"{get_timestamp()}     📸 Path is not a file: {screenshot_path}")
                     continue
-                
+
                 # Get file size (Gmail has 25MB attachment limit)
                 file_size = os.path.getsize(screenshot_path)
                 if file_size > 20 * 1024 * 1024:  # 20MB safety limit
                     print(f"{get_timestamp()}     📸 Screenshot too large ({file_size} bytes): {screenshot_path}")
                     continue
-                
+
                 # Read and attach the file
                 with open(screenshot_path, 'rb') as attachment:
                     part = MIMEBase('application', 'octet-stream')
                     part.set_payload(attachment.read())
-                
+
                 # Encode file in ASCII characters to send by email
                 encoders.encode_base64(part)
-                
+
                 # Add header as key/value pair to attachment part
                 filename = os.path.basename(screenshot_path)
                 part.add_header(
                     'Content-Disposition',
                     f'attachment; filename= {filename}',
                 )
-                
+
                 # Attach the part to message
                 msg.attach(part)
                 attached_count += 1
                 print(f"{get_timestamp()}     📸 Attached screenshot: {filename} ({file_size} bytes)")
-                
-            except Exception as e:
-                print(f"{get_timestamp()}     ❌ Failed to attach screenshot {screenshot_path}: {e}")
-                continue
-        
-        return attached_count
 
-    def _embed_screenshots_inline(self, body, screenshot_paths):
-        """
-        Embed screenshots inline in the email body using base64 encoding.
-        
-        Args:
-            body (str): Original email body text
-            screenshot_paths (list): List of screenshot file paths to embed
-            
-        Returns:
-            tuple: (html_body, embedded_count)
-        """
-        if not screenshot_paths:
-            return body, 0
-            
-        embedded_count = 0
-        
-        # Sort screenshots by filename in ascending order
-        sorted_screenshots = sorted(screenshot_paths, key=lambda path: os.path.basename(path))
-        
-        # Convert text body to HTML with Gmail-optimized styling
-        html_body = f'''<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tennis Court Booking Report</title>
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.4; color: #333; margin: 0; padding: 20px;">
-    <div style="max-width: 800px; margin: 0 auto;">
-        <pre style="font-family: 'Courier New', monospace; font-size: 12px; background-color: #f5f5f5; padding: 15px; border: 1px solid #ddd; white-space: pre-wrap; word-wrap: break-word;">{body}</pre>
-        
-        <hr style="margin: 30px 0; border: none; border-top: 2px solid #007bff;">
-        <h2 style="color: #007bff; margin: 20px 0 15px 0;">📸 Screenshots (sorted by name)</h2>
-        <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
-            Screenshots are displayed at 50% scale for optimal viewing. Gmail supports inline images.
-        </p>
-'''
-        
-        for screenshot_path in sorted_screenshots:
-            # Get filename early for error messages
-            filename = os.path.basename(screenshot_path)
-            
-            try:
-                # Check if file exists and is readable
-                if not os.path.exists(screenshot_path):
-                    print(f"{get_timestamp()}     📸 Screenshot not found: {screenshot_path}")
-                    continue
-                    
-                if not os.path.isfile(screenshot_path):
-                    print(f"{get_timestamp()}     📸 Path is not a file: {screenshot_path}")
-                    continue
-                
-                # Get file size (strict limit for email compatibility)
-                file_size = os.path.getsize(screenshot_path)
-                if file_size > 1 * 1024 * 1024:  # 1MB limit per image for better email client support
-                    print(f"{get_timestamp()}     📸 Screenshot too large ({file_size} bytes): {screenshot_path}")
-                    continue
-                
-                # Read and encode the image file
-                with open(screenshot_path, 'rb') as image_file:
-                    image_data = image_file.read()
-                    base64_image = base64.b64encode(image_data).decode('utf-8')
-                    print(f"{get_timestamp()}     📸 Base64 length: {len(base64_image)} chars for {filename}")
-                
-                # Determine MIME type
-                mime_type, _ = mimetypes.guess_type(screenshot_path)
-                if not mime_type or not mime_type.startswith('image/'):
-                    mime_type = 'image/png'  # Default to PNG
-                
-                # Add the inline image to HTML body (Gmail-optimized styling)
-                html_body += f'''
-        <div style="margin: 20px 0; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #fafafa; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #1a73e8; font-weight: bold;">{filename}</h3>
-            <img src="data:{mime_type};base64,{base64_image}" 
-                 alt="Screenshot: {filename}" 
-                 style="width: 50%; height: auto; border: 2px solid #1a73e8; border-radius: 4px; display: block; margin: 12px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.15);" 
-                 loading="lazy">
-            <div style="font-size: 12px; color: #5f6368; margin-top: 8px; padding: 8px; background-color: #f1f3f4; border-radius: 4px;">
-                📸 <strong>File:</strong> {file_size:,} bytes | <strong>Display:</strong> 50% scale for Gmail optimization
-            </div>
-        </div>
-'''
-                
-                embedded_count += 1
-                print(f"{get_timestamp()}     📸 Embedded screenshot: {filename} ({file_size} bytes)")
-                
             except Exception as e:
-                print(f"{get_timestamp()}     ❌ Failed to embed screenshot {filename}: {e}")
+                filename = os.path.basename(screenshot_path)
+                print(f"{get_timestamp()}     ❌ Failed to attach screenshot {filename}: {e}")
                 continue
-        
-        # Close HTML structure
-        html_body += '''
-    </div>
-</body>
-</html>'''
-        
-        return html_body, embedded_count
+
+        return attached_count
 
     async def send_email(self, recipient, subject, body, screenshot_paths=None):
         """
@@ -213,29 +119,19 @@ class EmailManager:
             if not recipient:
                 raise ValueError("Recipient email is required")
             
-            # Embed screenshots inline if provided
-            embedded_count = 0
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = self.sender_email
+            msg['To'] = recipient
+            msg['Subject'] = subject
+            
+            msg.attach(MIMEText(body, 'plain', 'utf-8'))
+            
+            # Attach screenshots if provided (sorted by filename)
+            attached_count = 0
             if screenshot_paths:
-                html_body, embedded_count = self._embed_screenshots_inline(body, screenshot_paths)
-                
-                # Create HTML email optimized for Gmail
-                msg = MIMEText(html_body, 'html', 'utf-8')
-                msg['From'] = self.sender_email
-                msg['To'] = recipient
-                msg['Subject'] = subject
-                
-                # Add Gmail-specific headers for better rendering
-                msg['X-Priority'] = '3'
-                msg['X-MSMail-Priority'] = 'Normal'
-                msg['X-Mailer'] = 'Tennis Court Booking System'
-                
-                print(f"{get_timestamp()}     📸 Successfully embedded {embedded_count}/{len(screenshot_paths)} screenshots inline (Gmail optimized)")
-            else:
-                # No screenshots, send as plain text
-                msg = MIMEText(body, 'plain', 'utf-8')
-                msg['From'] = self.sender_email
-                msg['To'] = recipient
-                msg['Subject'] = subject
+                attached_count = self._attach_screenshots_sorted(msg, screenshot_paths)
+                print(f"{get_timestamp()}     📸 Successfully attached {attached_count}/{len(screenshot_paths)} screenshots (sorted by name)")
             
             print(f"{get_timestamp()}     📧 SMTP: Connecting to Gmail SMTP server...")
             
@@ -352,7 +248,7 @@ class EmailManager:
                 for i, screenshot in enumerate(session['screenshots_taken'], 1):
                     body += f"   {i}. {screenshot['timestamp']} - {screenshot['description']}\n"
                     body += f"      File: {screenshot['path']}\n"
-                body += "\n📸 Note: All screenshots are embedded below in the email for easy viewing.\n"
+                body += "\n📎 Note: All screenshots are attached to this email (sorted by name).\n"
             else:
                 body += "📸 No screenshots were taken during this session.\n"
             
@@ -546,7 +442,7 @@ Complete terminal logs and screenshot details are included above for debugging.
 🎯 Target Day: {target_day_name}
 🏟️ Courts: {summary['total_sessions']}
 
-📸 Note: All screenshots from all court booking sessions are embedded below in the email (sorted by name).
+📎 Note: All screenshots from all court booking sessions are attached to this email (sorted by name).
 
 This is an automated summary report from the Tennis Court Booking System.
             """.strip()

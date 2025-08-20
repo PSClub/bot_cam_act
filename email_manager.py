@@ -127,6 +127,9 @@ class EmailManager:
 '''
         
         for screenshot_path in sorted_screenshots:
+            # Get filename early for error messages
+            filename = os.path.basename(screenshot_path)
+            
             try:
                 # Check if file exists and is readable
                 if not os.path.exists(screenshot_path):
@@ -154,9 +157,6 @@ class EmailManager:
                 if not mime_type or not mime_type.startswith('image/'):
                     mime_type = 'image/png'  # Default to PNG
                 
-                # Get filename for display
-                filename = os.path.basename(screenshot_path)
-                
                 # Add the inline image to HTML body (Gmail-optimized styling)
                 html_body += f'''
         <div style="margin: 20px 0; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #fafafa; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
@@ -175,7 +175,7 @@ class EmailManager:
                 print(f"{get_timestamp()}     📸 Embedded screenshot: {filename} ({file_size} bytes)")
                 
             except Exception as e:
-                print(f"{get_timestamp()}     ❌ Failed to embed screenshot {screenshot_path}: {e}")
+                print(f"{get_timestamp()}     ❌ Failed to embed screenshot {filename}: {e}")
                 continue
         
         # Close HTML structure

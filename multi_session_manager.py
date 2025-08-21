@@ -157,7 +157,7 @@ class BookingSession:
                     status='🔄 Attempting',
                     error_details='Booking process started'
                 )
-                self.sheets_manager.write_booking_log(log_entry)
+                # self.sheets_manager.write_booking_log(log_entry)
             
             # Navigate to court if needed
             if self.current_court_url != self.court_url:

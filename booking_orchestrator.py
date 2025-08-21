@@ -215,7 +215,7 @@ class BookingOrchestrator:
                 'Status': f"📊 Summary: {summary['successful_bookings']}✅ {summary['failed_bookings']}❌",
                 'Error Details': f"Target: {self.target_day_name}, Courts: {summary['total_sessions']}"
             }
-            self.sheets_manager.write_booking_log(summary_log_entry)
+            # self.sheets_manager.write_booking_log(summary_log_entry)
             
             print(f"{get_timestamp()} ✅ Booking summary generated and logged")
             

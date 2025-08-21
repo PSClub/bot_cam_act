@@ -199,154 +199,86 @@ async def wait_until_midnight():
 
 async def post_midnight_calendar_advancement(page, target_date_str, slot_details, session=None):
     """
-    Advanced post-midnight calendar navigation with timeout protection.
-    Attempts to find the target date with refreshes and dialog handling.
-    Exits after 2 minutes if date is not found.
+    An optimised and more aggressive post-midnight calendar navigation function.
+    It clicks through the calendar as fast as possible to find the target date.
     """
     import pytz
-    
+
     london_tz = pytz.timezone("Europe/London")
     start_time = datetime.now(london_tz)
     timeout_minutes = 2
-    
+
     date_obj = datetime.strptime(target_date_str, "%d/%m/%Y")
     formatted_date = f"{date_obj.strftime('%a').upper()} {date_obj.day}/{date_obj.month}"
-    
-    log_msg = f"{get_timestamp()} 🚀 Post-midnight calendar advancement for '{formatted_date}'..."
+
+    log_msg = f"{get_timestamp()} 🚀 Starting optimised post-midnight advancement for '{formatted_date}'..."
     if session:
         session.log_message(log_msg)
     else:
         print(log_msg)
-    
-    # Set up dialog handler for any pop-ups
+
+    # Set up a dialog handler for any pop-ups
     async def dialog_handler(dialog):
-        log_msg = f"{get_timestamp()} 🔄 Handling dialog: {dialog.message}"
+        log_msg = f"{get_timestamp()} 🔄 Dialog detected and accepted: {dialog.message}"
         if session:
             session.log_message(log_msg)
         else:
             print(log_msg)
         await dialog.accept()
-    
+
     page.on("dialog", dialog_handler)
-    
+
     try:
-        for attempt in range(5):  # Maximum 5 attempts
-            current_time = datetime.now(london_tz)
-            elapsed = (current_time - start_time).total_seconds()
-            
-            # Check timeout (2 minutes = 120 seconds)
-            if elapsed > (timeout_minutes * 60):
-                log_msg = f"{get_timestamp()} ⏰ Timeout reached ({timeout_minutes} minutes). Exiting post-midnight advancement."
-                if session:
-                    session.log_message(log_msg)
-                else:
-                    print(log_msg)
-                return False
-            
-            log_msg = f"{get_timestamp()} 🔄 Attempt {attempt + 1}/5 to find target date..."
-            if session:
-                session.log_message(log_msg)
-            else:
-                print(log_msg)
-            
-            # Check if target date is already visible
+        # Loop for a maximum of 2 minutes
+        while (datetime.now(london_tz) - start_time).total_seconds() < (timeout_minutes * 60):
+            # First, check if the date is already visible. This is a quick check.
             try:
-                if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=1000):
+                if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=500):
                     log_msg = f"{get_timestamp()} ✅ Target date '{formatted_date}' found!"
                     if session:
                         session.log_message(log_msg)
                     else:
                         print(log_msg)
-                    await take_screenshot(page, "post_midnight_date_found", slot_details, session=session)
+                    await take_screenshot(page, "date_found_optimised", slot_details, session=session)
                     return True
             except:
+                # If the check times out, just continue to the next step
                 pass
-            
-            # Try to advance the calendar
+
+            # If the date is not visible, click the "Next Week" button
             try:
                 next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
-                if await next_week_button.is_visible(timeout=1000):
-                    log_msg = f"{get_timestamp()} 📅 Clicking 'Next Week' to advance calendar..."
-                    if session:
-                        session.log_message(log_msg)
-                    else:
-                        print(log_msg)
-                    
-                    # Click with timeout and better error handling
-                    await next_week_button.click(timeout=10000)
-                    
-                    # Wait for page to load with longer timeout
-                    await page.wait_for_load_state('domcontentloaded', timeout=10000)
-                    # Give extra time for JavaScript calendar updates
-                    await asyncio.sleep(1)
-                    
-                    # Check for target date again
-                    try:
-                        if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=1000):
-                            log_msg = f"{get_timestamp()} ✅ Target date '{formatted_date}' found after advancement!"
-                            if session:
-                                session.log_message(log_msg)
-                            else:
-                                print(log_msg)
-                            await take_screenshot(page, "post_midnight_date_found_after_advance", slot_details, session=session)
-                            return True
-                    except:
-                        pass
-                else:
-                    log_msg = f"{get_timestamp()} ⚠️ Next Week button not visible, refreshing page..."
-                    if session:
-                        session.log_message(log_msg)
-                    else:
-                        print(log_msg)
-                    break  # Exit to refresh
+                await next_week_button.click(timeout=15000) # Increased timeout for the click itself
+
+                # Wait for the DOM to be loaded, which is faster than waiting for the full page
+                await page.wait_for_load_state('domcontentloaded', timeout=15000)
+
             except Exception as e:
-                log_msg = f"{get_timestamp()} ⚠️ Error during calendar advancement: {e}"
+                log_msg = f"{get_timestamp()} ⚠️ Could not click 'Next Week' or page did not load in time. Error: {e}. Retrying..."
                 if session:
                     session.log_message(log_msg)
                 else:
                     print(log_msg)
-                break  # Exit to refresh
-        
-        # If we get here, try refreshing the page
-        log_msg = f"{get_timestamp()} 🔄 Refreshing page to reload calendar..."
-        if session:
-            session.log_message(log_msg)
-        else:
-            print(log_msg)
-        
-        await page.reload()
-        await page.wait_for_load_state('domcontentloaded', timeout=10000)
-        
-        # Final check after refresh
-        try:
-            if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=2000):
-                log_msg = f"{get_timestamp()} ✅ Target date '{formatted_date}' found after refresh!"
-                if session:
-                    session.log_message(log_msg)
-                else:
-                    print(log_msg)
-                await take_screenshot(page, "post_midnight_date_found_after_refresh", slot_details, session=session)
-                return True
-        except:
-            pass
-        
-        # If still not found, exit
-        log_msg = f"{get_timestamp()} ❌ Target date '{formatted_date}' not found after all attempts."
+                # If clicking fails, try reloading the page to recover
+                await page.reload(wait_until="domcontentloaded", timeout=20000)
+
+        # If the loop finishes without finding the date, it has timed out
+        log_msg = f"{get_timestamp()} ⏰ Timeout of {timeout_minutes} minutes reached. Could not find target date."
         if session:
             session.log_message(log_msg)
         else:
             print(log_msg)
         return False
-        
+
     except Exception as e:
-        log_msg = f"{get_timestamp()} ❌ Error in post_midnight_calendar_advancement: {e}"
+        log_msg = f"{get_timestamp()} ❌ A critical error occurred in post_midnight_calendar_advancement: {e}"
         if session:
             session.log_message(log_msg)
         else:
             print(log_msg)
         return False
     finally:
-        # Remove dialog handler
+        # Always remove the dialog handler to avoid memory leaks
         page.remove_listener("dialog", dialog_handler)
 
 async def rapid_advance_to_target_week(page, target_date_str, slot_details, session=None):

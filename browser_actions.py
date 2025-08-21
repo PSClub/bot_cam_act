@@ -604,26 +604,49 @@ async def book_slot(page, target_date_str, target_time_str, slot_details, sessio
         # Take screenshot after adding to basket
         await take_screenshot(page, "slot_added_to_basket", slot_details, session=session)
         
-        # Click back button to return to calendar for next slot booking
+        # Navigate back to calendar for next slot booking
         try:
-            back_button = page.locator("input[type='button'][value='Back']")
-            if await back_button.is_visible(timeout=2000):
-                log_msg = f"{get_timestamp()} 🔙 Clicking 'Back' button to return to calendar..."
-                if session:
-                    session.log_message(log_msg)
-                else:
-                    print(log_msg)
-                await back_button.click()
-                await page.wait_for_load_state('networkidle', timeout=10000)
-                await take_screenshot(page, "back_to_calendar", slot_details, session=session)
+            log_msg = f"{get_timestamp()} 🔙 Navigating back to calendar using browser back navigation..."
+            if session:
+                session.log_message(log_msg)
             else:
-                log_msg = f"{get_timestamp()} ⚠️ Back button not found, continuing..."
+                print(log_msg)
+            
+            # Use browser back navigation directly (no back button on page)
+            await page.go_back()
+            await page.wait_for_load_state('domcontentloaded', timeout=10000)
+            
+            # Give extra time for calendar to reload
+            await asyncio.sleep(2)
+            
+            # Take screenshot after returning to calendar
+            await take_screenshot(page, "returned_to_calendar", slot_details, session=session)
+            
+            # Verify we're back on the calendar page
+            try:
+                # Check for calendar elements to confirm we're on the right page
+                calendar_present = await page.locator("#DateTimeDiv, .timetable-title, #ctl00_PageContent_btnNextWeek").first.is_visible(timeout=3000)
+                if calendar_present:
+                    log_msg = f"{get_timestamp()} ✅ Successfully returned to calendar page"
+                    if session:
+                        session.log_message(log_msg)
+                    else:
+                        print(log_msg)
+                else:
+                    log_msg = f"{get_timestamp()} ⚠️ May not be on calendar page, calendar elements not visible"
+                    if session:
+                        session.log_message(log_msg)
+                    else:
+                        print(log_msg)
+            except:
+                log_msg = f"{get_timestamp()} ⚠️ Could not verify calendar page presence"
                 if session:
                     session.log_message(log_msg)
                 else:
                     print(log_msg)
+                
         except Exception as e:
-            log_msg = f"{get_timestamp()} ⚠️ Error clicking back button: {e}"
+            log_msg = f"{get_timestamp()} ⚠️ Error navigating back to calendar: {e}"
             if session:
                 session.log_message(log_msg)
             else:

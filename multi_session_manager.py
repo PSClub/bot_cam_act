@@ -184,42 +184,56 @@ class BookingSession:
                 self.current_court_url = self.court_url
                 self.current_date = None
             
-            # Navigate to date if needed
-            if self.current_date != target_date:
-                self.log_message(f"{get_timestamp()} 📅 Navigating to date {target_date}...")
-                if not await find_date_on_calendar(self.page, target_date, (self.court_url, target_date, slots_to_book[0]), True, session=self):
-                    self.log_message(f"{get_timestamp()} ❌ Failed to find date {target_date} for {self.court_number}")
-                    await take_screenshot(self.page, f"date_not_found_{target_date.replace('/', '-')}", session=self)
+            # Date navigation is now handled individually for each slot in the booking loop
+            
+            # Book each slot
+            successful_slots = 0
+            for i, slot_time in enumerate(slots_to_book):
+                slot_details = (self.court_url, target_date, slot_time)
+                
+                # Navigate to date before each booking attempt (in case we came back from basket)
+                if self.current_date != target_date:
+                    if i > 0:
+                        self.log_message(f"{get_timestamp()} 📅 Re-navigating to date {target_date} for slot {i+1}/{len(slots_to_book)}...")
+                    else:
+                        self.log_message(f"{get_timestamp()} 📅 Navigating to date {target_date} for first slot...")
                     
-                    # Update all pre-recorded attempts as failed due to date not found
-                    for slot_time in slots_to_book:
+                    if not await find_date_on_calendar(self.page, target_date, (self.court_url, target_date, slot_time), True, session=self):
+                        self.log_message(f"{get_timestamp()} ❌ Failed to find date {target_date} for slot {slot_time}")
+                        await take_screenshot(self.page, f"date_not_found_{target_date.replace('/', '-')}_slot_{slot_time}", session=self)
+                        
+                        # This slot fails, but continue with others
                         log_entry = self.sheets_manager.create_log_entry(
                             email=self.email,
                             court=self.court_number,
                             date=target_date,
                             time=slot_time,
                             status='❌ Failed',
-                            error_details='Target date not found on calendar (too far in advance)'
+                            error_details='Target date not found on calendar for this slot'
                         )
                         self.sheets_manager.write_booking_log(log_entry)
+                        continue
                     
-                    return False
-                self.log_message(f"{get_timestamp()} ✅ Successfully navigated to date {target_date}")
-                await take_screenshot(self.page, f"date_found_{target_date.replace('/', '-')}", session=self)
-                self.current_date = target_date
-            
-            # Book each slot
-            successful_slots = 0
-            for slot_time in slots_to_book:
-                slot_details = (self.court_url, target_date, slot_time)
+                    self.log_message(f"{get_timestamp()} ✅ Successfully navigated to date {target_date}")
+                    await take_screenshot(self.page, f"date_found_{target_date.replace('/', '-')}_slot_{slot_time}", session=self)
+                    self.current_date = target_date
                 
-                self.log_message(f"{get_timestamp()} 🎯 {self.account_name} attempting to book {slot_time} on {target_date}")
+                self.log_message(f"{get_timestamp()} 🎯 {self.account_name} attempting to book {slot_time} on {target_date} (slot {i+1}/{len(slots_to_book)})")
                 
                 if await book_slot(self.page, target_date, slot_time, slot_details, session=self):
                     # Remove from failed bookings and add to successful
                     if slot_details in self.failed_bookings:
                         self.failed_bookings.remove(slot_details)
                     self.successful_bookings.append(slot_details)
+                    
+                    # Reset current_date after successful booking since we navigated back to calendar
+                    self.current_date = None
+                    self.log_message(f"{get_timestamp()} 🔄 Reset date tracking after successful booking")
+                    
+                    # Check if there are more slots to book
+                    remaining_slots = slots_to_book[i + 1:]
+                    if remaining_slots:
+                        self.log_message(f"{get_timestamp()} 📅 {len(remaining_slots)} more slots to book, will re-navigate to date for next slot")
                     
                     # Update log entry for successful booking
                     log_entry = self.sheets_manager.create_log_entry(

@@ -120,19 +120,19 @@ async def navigate_to_court(page, court_url, session=None):
         return False
 
 async def check_london_time_near_midnight():
-    """Check if current London time is within 10 minutes of midnight."""
+    """Check if current London time is within 20 minutes of midnight."""
     import pytz
     london_tz = pytz.timezone("Europe/London")
     now = datetime.now(london_tz)
     
     print(f"{get_timestamp()} Current London time: {now.strftime('%H:%M:%S')}")
     
-    # Check if we're within 10 minutes of midnight (23:50 to 00:10)
-    if now.hour == 23 and now.minute >= 50:
-        # Between 23:50 and 23:59 - near midnight
+    # Check if we're within 20 minutes of midnight (23:40 to 00:20)
+    if now.hour == 23 and now.minute >= 40:
+        # Between 23:40 and 23:59 - near midnight
         return True, now
-    elif now.hour == 0 and now.minute <= 10:
-        # Between 00:00 and 00:10 - just past midnight, still in window
+    elif now.hour == 0 and now.minute <= 20:
+        # Between 00:00 and 00:20 - just past midnight, still in window
         return True, now
     else:
         return False, now

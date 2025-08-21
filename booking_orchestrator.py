@@ -91,7 +91,7 @@ class BookingOrchestrator:
             today = get_london_datetime().date()
             
             # Calculate target date (35 days from today)
-            self.target_date = today + timedelta(days=34)
+            self.target_date = today + timedelta(days=35)
             self.target_day_name = self.target_date.strftime('%A')
             
             print(f"{get_timestamp()} 📅 Target date: {self.target_date.strftime('%d/%m/%Y')} ({self.target_day_name})")

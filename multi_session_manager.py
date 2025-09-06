@@ -130,198 +130,130 @@ class BookingSession:
     
     async def book_slots_for_day(self, target_date, slots_to_book):
         """
-        Book all specified slots for a given day.
-        
-        Args:
-            target_date (str): Target date in DD/MM/YYYY format
-            slots_to_book (list): List of time slots to book (in HHMM format)
+        Book all specified slots for a given day without writing to the log.
+        This function only adds items to the basket.
         """
         try:
-            self.log_message(f"{get_timestamp()} --- {self.account_name} booking {len(slots_to_book)} slots for {target_date} ---")
-            
-            # Record ALL slot attempts upfront - this ensures they're counted even if booking fails early
+            self.log_message(f"{get_timestamp()} --- {self.account_name} adding {len(slots_to_book)} slots to basket for {target_date} ---")
             self.total_attempts = len(slots_to_book)
-            self.log_message(f"{get_timestamp()} 📋 Recording {self.total_attempts} slot attempts for {self.account_name}")
-            
-            # Pre-create failed bookings for all slots (will be removed if successful)
-            for slot_time in slots_to_book:
-                slot_details = (self.court_url, target_date, slot_time)
-                self.failed_bookings.append(slot_details)
-                
-                # Log all attempts to Google Sheets immediately
-                log_entry = self.sheets_manager.create_log_entry(
-                    email=self.email,
-                    court=self.court_number,
-                    date=target_date,
-                    time=slot_time,
-                    status='🔄 Attempting',
-                    error_details='Booking process started'
-                )
-                self.sheets_manager.write_booking_log(log_entry)
-            
-            # Navigate to court if needed
+
+            # Navigate to court if not already there
             if self.current_court_url != self.court_url:
                 self.log_message(f"{get_timestamp()} 🏟️ Navigating to {self.court_number}...")
                 if not await navigate_to_court(self.page, self.court_url, session=self):
-                    self.log_message(f"{get_timestamp()} ❌ Failed to navigate to {self.court_number}")
-                    await take_screenshot(self.page, f"navigation_failed_{self.court_number.lower()}", session=self)
-                    
-                    # Update all pre-recorded attempts as failed due to navigation failure
+                    self.log_message(f"{get_timestamp()} ❌ Failed to navigate to {self.court_number}, all slots for this session will fail.")
+                    # If navigation fails, all slots are considered failed from the start
                     for slot_time in slots_to_book:
-                        log_entry = self.sheets_manager.create_log_entry(
-                            email=self.email,
-                            court=self.court_number,
-                            date=target_date,
-                            time=slot_time,
-                            status='❌ Failed',
-                            error_details='Failed to navigate to court page'
-                        )
-                        self.sheets_manager.write_booking_log(log_entry)
-                    
+                        self.failed_bookings.append((self.court_url, target_date, slot_time))
                     return False
-                self.log_message(f"{get_timestamp()} ✅ Successfully navigated to {self.court_number}")
-                await take_screenshot(self.page, f"court_page_{self.court_number.lower()}", session=self)
                 self.current_court_url = self.court_url
                 self.current_date = None
-            
-            # Date navigation is now handled individually for each slot in the booking loop
-            
-            # Book each slot
-            successful_slots = 0
-            for i, slot_time in enumerate(slots_to_book):
+
+            # Attempt to book each slot
+            for slot_time in slots_to_book:
                 slot_details = (self.court_url, target_date, slot_time)
                 
-                # Navigate to date before each booking attempt (in case we came back from basket)
+                # Ensure we are on the correct date for each attempt
                 if self.current_date != target_date:
-                    if i > 0:
-                        self.log_message(f"{get_timestamp()} 📅 Re-navigating to date {target_date} for slot {i+1}/{len(slots_to_book)}...")
-                    else:
-                        self.log_message(f"{get_timestamp()} 📅 Navigating to date {target_date} for first slot...")
-                    
-                    if not await find_date_on_calendar(self.page, target_date, (self.court_url, target_date, slot_time), True, session=self):
-                        self.log_message(f"{get_timestamp()} ❌ Failed to find date {target_date} for slot {slot_time}")
-                        await take_screenshot(self.page, f"date_not_found_{target_date.replace('/', '-')}_slot_{slot_time}", session=self)
-                        
-                        # This slot fails, but continue with others
-                        log_entry = self.sheets_manager.create_log_entry(
-                            email=self.email,
-                            court=self.court_number,
-                            date=target_date,
-                            time=slot_time,
-                            status='❌ Failed',
-                            error_details='Target date not found on calendar for this slot'
-                        )
-                        self.sheets_manager.write_booking_log(log_entry)
-                        continue
-                    
-                    self.log_message(f"{get_timestamp()} ✅ Successfully navigated to date {target_date}")
-                    await take_screenshot(self.page, f"date_found_{target_date.replace('/', '-')}_slot_{slot_time}", session=self)
+                    if not await find_date_on_calendar(self.page, target_date, slot_details, True, session=self):
+                        self.log_message(f"❌ Failed to find date {target_date} for slot {slot_time}. Marking as failed.")
+                        self.failed_bookings.append(slot_details)
+                        continue  # Move to the next slot
                     self.current_date = target_date
-                
-                self.log_message(f"{get_timestamp()} 🎯 {self.account_name} attempting to book {slot_time} on {target_date} (slot {i+1}/{len(slots_to_book)})")
+
+                self.log_message(f"{get_timestamp()} 🎯 {self.account_name} attempting to add {slot_time} to basket...")
                 
                 if await book_slot(self.page, target_date, slot_time, slot_details, session=self):
-                    # Remove from failed bookings and add to successful
-                    if slot_details in self.failed_bookings:
-                        self.failed_bookings.remove(slot_details)
                     self.successful_bookings.append(slot_details)
-                    
-                    # Reset current_date after successful booking since we navigated back to calendar
-                    self.current_date = None
-                    self.log_message(f"{get_timestamp()} 🔄 Reset date tracking after successful booking")
-                    
-                    # Check if there are more slots to book
-                    remaining_slots = slots_to_book[i + 1:]
-                    if remaining_slots:
-                        self.log_message(f"{get_timestamp()} 📅 {len(remaining_slots)} more slots to book, will re-navigate to date for next slot")
-                    
-                    # Update log entry for successful booking
-                    log_entry = self.sheets_manager.create_log_entry(
-                        email=self.email,
-                        court=self.court_number,
-                        date=target_date,
-                        time=slot_time,
-                        status='✅ Success',
-                        error_details='Booking completed successfully'
-                    )
-                    self.sheets_manager.write_booking_log(log_entry)
-                    
-                    self.log_message(f"{get_timestamp()} ✅ {self.account_name} successfully booked {slot_time}")
-                    await take_screenshot(self.page, f"booking_success_{slot_time}", session=self)
-                    successful_slots += 1
+                    self.current_date = None # Reset date to force re-navigation after returning from basket
                 else:
-                    # Update the existing failed booking entry with specific failure reason
-                    log_entry = self.sheets_manager.create_log_entry(
-                        email=self.email,
-                        court=self.court_number,
-                        date=target_date,
-                        time=slot_time,
-                        status='❌ Failed',
-                        error_details='Slot not available or booking failed'
-                    )
-                    self.sheets_manager.write_booking_log(log_entry)
-                    
-                    self.log_message(f"{get_timestamp()} ❌ {self.account_name} failed to book {slot_time}")
-                    await take_screenshot(self.page, f"booking_failed_{slot_time}", session=self)
+                    self.failed_bookings.append(slot_details)
             
-            self.log_message(f"{get_timestamp()} 📊 Booking completed: {successful_slots} successful, {len(slots_to_book) - successful_slots} failed")
-            
-            # Return True if at least one slot was booked successfully
-            return successful_slots > 0
-            
+            self.log_message(f"{get_timestamp()} 📊 Basket summary: {len(self.successful_bookings)} added, {len(self.failed_bookings)} failed.")
+            return len(self.successful_bookings) > 0
+
         except Exception as e:
-            self.log_message(f"{get_timestamp()} ❌ Error booking slots for {self.account_name}: {e}")
-            await take_screenshot(self.page, f"booking_error_{self.account_name.lower()}", session=self)
-            
-            # Update any remaining failed bookings with the exception details
-            for slot_time in slots_to_book:
-                # Only log if this slot hasn't been processed yet
-                slot_details = (self.court_url, target_date, slot_time)
-                if slot_details in self.failed_bookings:
-                    log_entry = self.sheets_manager.create_log_entry(
-                        email=self.email,
-                        court=self.court_number,
-                        date=target_date,
-                        time=slot_time,
-                        status='❌ Failed',
-                        error_details=f'Booking process error: {str(e)}'
-                    )
-                    self.sheets_manager.write_booking_log(log_entry)
-            
+            self.log_message(f"❌ Critical error while adding slots to basket for {self.account_name}: {e}")
+            # Mark any remaining slots as failed
+            remaining_slots = set(slots_to_book) - {s[2] for s in self.successful_bookings} - {s[2] for s in self.failed_bookings}
+            for slot_time in remaining_slots:
+                self.failed_bookings.append((self.court_url, target_date, slot_time))
             return False
     
     async def checkout(self):
-        """Process checkout for all successful bookings."""
+        """Process checkout and log the final status of all booking attempts."""
         try:
+            # First, log all slots that failed before even getting to the basket
+            if self.failed_bookings:
+                self.log_message(f"{get_timestamp()} --- Logging {len(self.failed_bookings)} pre-checkout failures for {self.account_name} ---")
+                for court_url, date, time in self.failed_bookings:
+                    log_entry = self.sheets_manager.create_log_entry(
+                        email=self.email,
+                        court=self.court_number,
+                        date=date,
+                        time=time,
+                        status='❌ Failed',
+                        error_details='Slot not available or pre-booking failed'
+                    )
+                    self.sheets_manager.write_booking_log(log_entry)
+
+            # Now, process the checkout for bookings that made it to the basket
             if not self.successful_bookings:
-                self.log_message(f"{get_timestamp()} --- {self.account_name} has no bookings to checkout ---")
-                return True
-            
+                self.log_message(f"{get_timestamp()} --- {self.account_name} has no bookings in basket to checkout ---")
+                return True  # Not a failure if there was nothing to check out
+
             self.log_message(f"{get_timestamp()} --- {self.account_name} checking out {len(self.successful_bookings)} bookings ---")
-            
+
             from config import (
                 BASKET_URL, LB_CARD_NUMBER, LB_CARD_EXPIRY_MONTH, LB_CARD_EXPIRY_YEAR,
                 LB_CARD_SECURITY_CODE, LB_CARDHOLDER_NAME, LB_ADDRESS, LB_CITY, LB_POSTCODE
             )
-            
-            success = await checkout_basket(
+
+            checkout_success = await checkout_basket(
                 self.page, BASKET_URL, LB_CARD_NUMBER, LB_CARD_EXPIRY_MONTH,
                 LB_CARD_EXPIRY_YEAR, LB_CARD_SECURITY_CODE, LB_CARDHOLDER_NAME,
                 LB_ADDRESS, LB_CITY, LB_POSTCODE, self.email, session=self
             )
-            
-            if success:
+
+            final_status = '✅ Success' if checkout_success else '❌ Checkout Failed'
+            error_details = 'Booking and payment confirmed' if checkout_success else 'Payment failed or checkout timed out'
+
+            if checkout_success:
                 self.log_message(f"{get_timestamp()} ✅ {self.account_name} checkout successful")
-                await take_screenshot(self.page, f"checkout_success_{self.account_name.lower()}", session=self)
             else:
                 self.log_message(f"{get_timestamp()} ❌ {self.account_name} checkout failed")
-                await take_screenshot(self.page, f"checkout_failed_{self.account_name.lower()}", session=self)
-            
-            return success
-            
+
+            # Log the final outcome for all slots that were in the basket
+            self.log_message(f"{get_timestamp()} --- Logging final status for {len(self.successful_bookings)} basket items for {self.account_name} ---")
+            for court_url, date, time in self.successful_bookings:
+                log_entry = self.sheets_manager.create_log_entry(
+                    email=self.email,
+                    court=self.court_number,
+                    date=date,
+                    time=time,
+                    status=final_status,
+                    error_details=error_details
+                )
+                self.sheets_manager.write_booking_log(log_entry)
+
+            return checkout_success
+
         except Exception as e:
-            self.log_message(f"{get_timestamp()} ❌ Error during checkout for {self.account_name}: {e}")
+            self.log_message(f"❌ Critical error during checkout for {self.account_name}: {e}")
             await take_screenshot(self.page, f"checkout_error_{self.account_name.lower()}", session=self)
+            
+            # If a critical error happens during checkout, log all basket items as failed
+            if self.successful_bookings:
+                for court_url, date, time in self.successful_bookings:
+                    log_entry = self.sheets_manager.create_log_entry(
+                        email=self.email,
+                        court=self.court_number,
+                        date=date,
+                        time=time,
+                        status='❌ Checkout Failed',
+                        error_details=f'Critical error in checkout process: {str(e)}'
+                    )
+                    self.sheets_manager.write_booking_log(log_entry)
             return False
     
     async def logout(self):

@@ -39,6 +39,12 @@ FATHER_EMAIL = os.environ.get("FATHER_CAM_EMAIL_ADDRESS")
 FATHER_PASSWORD = os.environ.get("FATHER_CAM_PASSWORD")
 BRUCE_EMAIL = os.environ.get("BRUCE_CAM_EMAIL_ADDRESS")
 BRUCE_PASSWORD = os.environ.get("BRUCE_CAM_PASSWORD")
+SALLIE_EMAIL = os.environ.get("SALLIE_CAM_EMAIL_ADDRESS")
+SALLIE_PASSWORD = os.environ.get("SALLIE_CAM_PASSWORD")
+JAN_EMAIL = os.environ.get("JAN_CAM_EMAIL_ADDRESS")
+JAN_PASSWORD = os.environ.get("JAN_CAM_PASSWORD")
+JO_EMAIL = os.environ.get("JO_CAM_EMAIL_ADDRESS")
+JO_PASSWORD = os.environ.get("JO_CAM_PASSWORD")
 
 # =============================================================================
 # --- TENNIS COURT URLs ---

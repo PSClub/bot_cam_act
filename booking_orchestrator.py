@@ -122,6 +122,36 @@ class BookingOrchestrator:
             print(f"{get_timestamp()} ❌ Error determining slots to book: {e}")
             return False
     
+    def distribute_slots_among_sessions(self):
+        """
+        Distribute available slots among active sessions (one slot per account).
+        
+        Returns:
+            dict: Dictionary mapping session index to slot time
+        """
+        try:
+            print(f"{get_timestamp()} --- Distributing {len(self.slots_to_book)} slots among {len(self.multi_session_manager.sessions)} accounts ---")
+            
+            slot_distribution = {}
+            active_sessions = self.multi_session_manager.sessions
+            
+            # Distribute slots in round-robin fashion
+            for i, slot_time in enumerate(self.slots_to_book):
+                if i < len(active_sessions):
+                    session_index = i
+                    account_name = active_sessions[session_index].account_name
+                    slot_distribution[session_index] = slot_time
+                    print(f"{get_timestamp()} 🎯 {account_name} assigned slot: {slot_time}")
+                else:
+                    print(f"{get_timestamp()} ⚠️ More slots ({len(self.slots_to_book)}) than accounts ({len(active_sessions)}) - slot {slot_time} will not be booked")
+            
+            print(f"{get_timestamp()} ✅ Slot distribution complete: {len(slot_distribution)} assignments made")
+            return slot_distribution
+            
+        except Exception as e:
+            print(f"{get_timestamp()} ❌ Error distributing slots: {e}")
+            return {}
+    
     async def execute_booking_process(self):
         """Execute the complete booking process."""
         try:
@@ -141,22 +171,26 @@ class BookingOrchestrator:
                 print(f"{get_timestamp()} ❌ Failed to login to any sessions")
                 return False
             
-            # Step 4: Book all courts for the target date
-            print(f"{get_timestamp()} --- Step 2: Booking all courts ---")
+            # Step 4: Distribute slots among sessions (one slot per account)
+            print(f"{get_timestamp()} --- Step 2: Distributing slots among accounts ---")
+            slot_distribution = self.distribute_slots_among_sessions()
+            
+            # Step 5: Book distributed slots for each session
+            print(f"{get_timestamp()} --- Step 3: Booking distributed slots ---")
             target_date_str = self.target_date.strftime('%d/%m/%Y')
-            if not await self.multi_session_manager.book_all_courts_for_day(target_date_str, self.slots_to_book):
+            if not await self.multi_session_manager.book_distributed_slots(target_date_str, slot_distribution):
                 print(f"{get_timestamp()} ⚠️ No successful bookings made")
             
-            # Step 5: Process checkout for all sessions
-            print(f"{get_timestamp()} --- Step 3: Processing checkout ---")
+            # Step 6: Process checkout for all sessions
+            print(f"{get_timestamp()} --- Step 4: Processing checkout ---")
             await self.multi_session_manager.checkout_all_sessions()
             
-            # Step 6: Logout and cleanup
-            print(f"{get_timestamp()} --- Step 4: Logging out and cleanup ---")
+            # Step 7: Logout and cleanup
+            print(f"{get_timestamp()} --- Step 5: Logging out and cleanup ---")
             await self.multi_session_manager.logout_all_sessions()
             await self.multi_session_manager.cleanup_all_sessions()
             
-            # Step 7: Generate summary
+            # Step 8: Generate summary
             await self.generate_booking_summary()
             
             print(f"{get_timestamp()} === Multi-Court Booking Process Completed ===")

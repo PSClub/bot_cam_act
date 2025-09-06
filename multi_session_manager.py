@@ -459,6 +459,96 @@ class MultiSessionManager:
             print(f"{get_timestamp()} ❌ Error during booking process: {e}")
             return False
     
+    async def book_distributed_slots(self, target_date, slot_distribution):
+        """
+        Book distributed slots where each session gets exactly one slot.
+        
+        Args:
+            target_date (str): Target date in DD/MM/YYYY format
+            slot_distribution (dict): Dictionary mapping session index to slot time
+        """
+        try:
+            self.broadcast_message(f"{get_timestamp()} === Booking distributed slots for {target_date} ===")
+            
+            # Create booking tasks for each session with their assigned slot
+            booking_tasks = []
+            for session_index, slot_time in slot_distribution.items():
+                if session_index < len(self.sessions):
+                    session = self.sessions[session_index]
+                    # Each session only books one slot
+                    slots_for_session = [slot_time]
+                    task = session.book_slots_for_day(target_date, slots_for_session)
+                    booking_tasks.append(task)
+                    print(f"{get_timestamp()} 📋 Queued {session.account_name} to book slot {slot_time}")
+            
+            if not booking_tasks:
+                print(f"{get_timestamp()} ⚠️ No booking tasks created")
+                return False
+            
+            # Execute all booking tasks concurrently
+            booking_results = await asyncio.gather(*booking_tasks, return_exceptions=True)
+            
+            # Collect results with detailed error handling
+            for i, result in enumerate(booking_results):
+                session_index = list(slot_distribution.keys())[i]
+                session = self.sessions[session_index]
+                
+                if isinstance(result, Exception):
+                    # Handle specific exception types for better debugging
+                    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+                    
+                    if isinstance(result, PlaywrightTimeoutError):
+                        print(f"{get_timestamp()} ❌ Booking timeout for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 This might be due to slow page loading or network issues")
+                    elif isinstance(result, ConnectionError):
+                        print(f"{get_timestamp()} ❌ Network connection failed for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 Check internet connection and try again")
+                    elif isinstance(result, ValueError):
+                        print(f"{get_timestamp()} ❌ Invalid data for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 Check booking date/time format or court configuration")
+                    elif isinstance(result, PermissionError):
+                        print(f"{get_timestamp()} ❌ Permission denied for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 Check browser permissions or authentication")
+                    else:
+                        print(f"{get_timestamp()} ❌ Unexpected error for {session.account_name}: {type(result).__name__}: {result}")
+                        print(f"{get_timestamp()}   💡 This may require manual investigation")
+                    
+                    # Even if the session failed, collect any failed bookings that were attempted
+                    self.all_failed_bookings.extend(session.failed_bookings)
+                elif result:
+                    # Only print to console, don't broadcast to all session logs to avoid email leakage
+                    assigned_slot = slot_distribution[session_index]
+                    print(f"{get_timestamp()} ✅ {session.account_name} completed booking attempt for slot {assigned_slot}")
+                    self.all_successful_bookings.extend(session.successful_bookings)
+                    self.all_failed_bookings.extend(session.failed_bookings)
+                else:
+                    # Only print to console, don't broadcast to all session logs to avoid email leakage
+                    assigned_slot = slot_distribution[session_index]
+                    print(f"{get_timestamp()} ❌ {session.account_name} failed to book slot {assigned_slot}")
+                    # Even if the session failed, collect any failed bookings that were attempted
+                    self.all_failed_bookings.extend(session.failed_bookings)
+            
+            total_successful = len(self.all_successful_bookings)
+            total_failed = len(self.all_failed_bookings)
+            
+            self.broadcast_message(f"{get_timestamp()} === Distributed Booking Summary ===")
+            self.broadcast_message(f"{get_timestamp()} 📊 Total Successful Bookings: {total_successful}")
+            self.broadcast_message(f"{get_timestamp()} 📊 Total Failed Bookings: {total_failed}")
+            
+            # Debug: Print detailed results for each session
+            for session in self.sessions:
+                print(f"{get_timestamp()} 📊 {session.account_name}: {len(session.successful_bookings)}✅ {len(session.failed_bookings)}❌")
+                if session.successful_bookings:
+                    print(f"{get_timestamp()}   ✅ Successful: {session.successful_bookings}")
+                if session.failed_bookings:
+                    print(f"{get_timestamp()}   ❌ Failed: {session.failed_bookings}")
+            
+            return total_successful > 0
+            
+        except Exception as e:
+            print(f"{get_timestamp()} ❌ Error during distributed booking process: {e}")
+            return False
+    
     async def checkout_all_sessions(self):
         """Process checkout for all sessions."""
         try:

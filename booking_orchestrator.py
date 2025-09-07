@@ -160,7 +160,7 @@ class BookingOrchestrator:
                 'Email': 'SYSTEM',
                 'Court': 'ALL',
                 'Date': self.target_date.strftime('%d/%m/%Y'),
-                'Time': f"{len(self.slots_to_book)} slots",
+                'Time': f"{summary['total_sessions']} assignments",
                 'Status': f"📊 Summary: {summary['successful_bookings']}✅ {summary['failed_bookings']}❌",
                 'Error Details': f"Target: {self.target_day_name}, Courts: {summary['total_sessions']}"
             }
@@ -212,8 +212,10 @@ class BookingOrchestrator:
             if IT_EMAIL_ADDRESS:
                 print(f"{get_timestamp()} 📧 Sending individual session emails to IT ({IT_EMAIL_ADDRESS})...")
                 print(f"{get_timestamp()}   Will send {len(session_details)} separate emails (one per court)")
+                # In simplified system, each session has 1 assigned slot
+                assigned_slots = [session['assigned_slot'] for session in session_details if 'assigned_slot' in session]
                 await email_manager.send_individual_session_emails(
-                    session_details, IT_EMAIL_ADDRESS, self.target_date, self.target_day_name, self.slots_to_book
+                    session_details, IT_EMAIL_ADDRESS, self.target_date, self.target_day_name, assigned_slots
                 )
             else:
                 print(f"{get_timestamp()} ⚠️ IT_EMAIL_ADDRESS not configured, skipping individual session emails")

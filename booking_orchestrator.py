@@ -6,7 +6,8 @@ import os
 from datetime import datetime, timedelta
 from sheets_manager import SheetsManager
 from multi_session_manager import MultiSessionManager
-from robust_parser import normalize_day_name, normalize_time, get_slots_for_day, parse_booking_schedule
+# REMOVED: unused imports from old system
+# from robust_parser import normalize_day_name, normalize_time, get_slots_for_day, parse_booking_schedule
 from config import GSHEET_MAIN_ID, GOOGLE_SERVICE_ACCOUNT_JSON, SHOW_BROWSER
 from utils import get_timestamp
 from email_manager import EmailManager
@@ -18,10 +19,11 @@ class BookingOrchestrator:
         """Initialize the booking orchestrator."""
         self.sheets_manager = None
         self.multi_session_manager = None
-        self.booking_schedule = []
+        # REMOVED: unused variables from old system
+        # self.booking_schedule = []
+        # self.slots_to_book = []
         self.target_date = None
         self.target_day_name = None
-        self.slots_to_book = []
     
     async def initialize(self):
         """Initialize the simplified booking system."""
@@ -45,33 +47,6 @@ class BookingOrchestrator:
             print(f"{get_timestamp()} ❌ Failed to initialize booking orchestrator: {e}")
             return False
     
-    async def load_booking_schedule(self):
-        """Load and parse the booking schedule from Google Sheets."""
-        try:
-            print(f"{get_timestamp()} --- Loading booking schedule ---")
-            
-            # Read raw schedule data
-            raw_schedule_data = self.sheets_manager.read_booking_schedule_sheet()
-            
-            # Parse and normalize schedule
-            self.booking_schedule = parse_booking_schedule(raw_schedule_data)
-            
-            print(f"{get_timestamp()} ✅ Loaded {len(self.booking_schedule)} schedule entries")
-            
-            # Validate schedule
-            from robust_parser import validate_schedule_data
-            is_valid, issues = validate_schedule_data(self.booking_schedule)
-            
-            if not is_valid:
-                print(f"{get_timestamp()} ⚠️ Schedule validation issues:")
-                for issue in issues:
-                    print(f"{get_timestamp()}   - {issue}")
-            else:
-                print(f"{get_timestamp()} ✅ Schedule validation passed")
-            
-        except Exception as e:
-            print(f"{get_timestamp()} ❌ Error loading booking schedule: {e}")
-            raise
     
     def calculate_target_date(self):
         """Calculate the target date (35 days from today)."""
@@ -90,87 +65,7 @@ class BookingOrchestrator:
             print(f"{get_timestamp()} ❌ Error calculating target date: {e}")
             raise
     
-    def determine_slots_to_book(self):
-        """Determine which slots to book based on the target day."""
-        try:
-            print(f"{get_timestamp()} --- Determining slots to book for {self.target_day_name} ---")
-            
-            # Get all slots for the target day
-            self.slots_to_book = get_slots_for_day(self.booking_schedule, self.target_day_name)
-            
-            if not self.slots_to_book:
-                print(f"{get_timestamp()} ⚠️ No slots configured for {self.target_day_name}")
-                return False
-            
-            print(f"{get_timestamp()} ✅ Found {len(self.slots_to_book)} slots to book:")
-            for slot in self.slots_to_book:
-                print(f"{get_timestamp()}   - {slot}")
-            
-            return True
-            
-        except Exception as e:
-            print(f"{get_timestamp()} ❌ Error determining slots to book: {e}")
-            return False
     
-    def distribute_slots_among_sessions(self):
-        """
-        Distribute available slots among active sessions (one slot per account).
-        
-        Returns:
-            dict: Dictionary mapping session index to slot time
-        """
-        try:
-            print(f"{get_timestamp()} === SLOT DISTRIBUTION STARTING ===")
-            print(f"{get_timestamp()} 📊 Available slots: {self.slots_to_book}")
-            print(f"{get_timestamp()} 📊 Active sessions: {len(self.multi_session_manager.sessions)}")
-            
-            # Print all active sessions first
-            for i, session in enumerate(self.multi_session_manager.sessions):
-                print(f"{get_timestamp()} 👤 Session {i}: {session.account_name} ({session.email}) -> {session.court_number}")
-            
-            slot_distribution = {}
-            active_sessions = self.multi_session_manager.sessions
-            
-            # Distribute slots in round-robin fashion
-            print(f"{get_timestamp()} --- Starting slot assignment ---")
-            for i, slot_time in enumerate(self.slots_to_book):
-                if i < len(active_sessions):
-                    session_index = i
-                    session = active_sessions[session_index]
-                    account_name = session.account_name
-                    court_number = session.court_number
-                    slot_distribution[session_index] = slot_time
-                    print(f"{get_timestamp()} 🎯 ASSIGNMENT: {account_name} ({court_number}) -> SLOT {slot_time}")
-                else:
-                    print(f"{get_timestamp()} ⚠️ EXCESS SLOT: {slot_time} (more slots than accounts)")
-            
-            print(f"{get_timestamp()} === SLOT DISTRIBUTION SUMMARY ===")
-            print(f"{get_timestamp()} 📋 Total assignments made: {len(slot_distribution)}")
-            for session_index, slot_time in slot_distribution.items():
-                session = active_sessions[session_index]
-                print(f"{get_timestamp()} 📌 {session.account_name} will attempt to book {slot_time} on {session.court_number}")
-            
-            if not slot_distribution:
-                print(f"{get_timestamp()} ❌ WARNING: No slot assignments made!")
-                return {}
-            
-            # Warn if there are more accounts than slots
-            if len(self.slots_to_book) < len(active_sessions):
-                unassigned_accounts = []
-                for i in range(len(self.slots_to_book), len(active_sessions)):
-                    unassigned_accounts.append(active_sessions[i].account_name)
-                print(f"{get_timestamp()} ⚠️ WARNING: {len(unassigned_accounts)} accounts will NOT get slots:")
-                for account in unassigned_accounts:
-                    print(f"{get_timestamp()}   - {account} (no slot available)")
-                print(f"{get_timestamp()} 💡 SOLUTION: Add more slots to {self.target_day_name} in your booking schedule")
-            
-            return slot_distribution
-            
-        except Exception as e:
-            print(f"{get_timestamp()} ❌ Error distributing slots: {e}")
-            import traceback
-            print(f"{get_timestamp()} 🔍 Full error: {traceback.format_exc()}")
-            return {}
     
     async def execute_booking_process(self):
         """Execute the simplified booking process using pre-assigned slots."""

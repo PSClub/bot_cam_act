@@ -7,6 +7,10 @@ This script verifies that the new multi-court booking system components are work
 import asyncio
 import os
 import sys
+
+# Add the parent directory to the path so we can import our modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from sheets_manager import SheetsManager, test_sheets_connection
 from multi_session_manager import MultiSessionManager, BookingSession
 from robust_parser import test_robust_parser, normalize_day_name, normalize_time, parse_booking_schedule
@@ -34,7 +38,13 @@ def test_environment_setup():
         'FATHER_CAM_EMAIL_ADDRESS',
         'FATHER_CAM_PASSWORD',
         'BRUCE_CAM_EMAIL_ADDRESS',
-        'BRUCE_CAM_PASSWORD'
+        'BRUCE_CAM_PASSWORD',
+        'SALLIE_CAM_EMAIL_ADDRESS',
+        'SALLIE_CAM_PASSWORD',
+        'JAN_CAM_EMAIL_ADDRESS',
+        'JAN_CAM_PASSWORD',
+        'JO_CAM_EMAIL_ADDRESS',
+        'JO_CAM_PASSWORD'
     ]
     
     missing_vars = []
@@ -80,8 +90,8 @@ async def test_multi_session_initialization():
         multi_session_manager = MultiSessionManager(sheets_manager)
         print("✅ Multi-session manager created")
         
-        # Test session initialization (headless mode for testing)
-        success = await multi_session_manager.initialize_sessions(headless=True)
+        # Test session initialization with assignments for Saturday (headless mode for testing)
+        success = await multi_session_manager.initialize_sessions_with_assignments('Saturday', headless=True)
         
         if success:
             print(f"✅ Successfully initialized {len(multi_session_manager.sessions)} sessions")
@@ -174,26 +184,27 @@ async def test_google_sheets_integration():
         if not success:
             return False
         
-        # Test reading configuration
+        # Test reading booking assignments (new simplified system)
         sheets_manager = SheetsManager(gsheet_id, service_account_json)
-        config_data = sheets_manager.read_configuration_sheet()
+        assignments_data = sheets_manager.read_booking_assignments()
         
-        print(f"✅ Configuration sheet contains {len(config_data)} entries:")
-        for entry in config_data:
+        print(f"✅ BookingSchedule sheet contains {len(assignments_data)} assignments:")
+        for entry in assignments_data:
             account = entry.get('Account', 'Unknown')
             email = entry.get('Email', 'No email')
             court = entry.get('Court Number', 'No court')
-            print(f"   {account}: {email} -> {court}")
-        
-        # Test reading schedule
-        schedule_data = sheets_manager.read_booking_schedule_sheet()
-        
-        print(f"✅ Schedule sheet contains {len(schedule_data)} entries:")
-        for entry in schedule_data:
-            day = entry.get('Day', 'Unknown')
+            day = entry.get('Day', 'No day')
             time = entry.get('Time', 'No time')
-            notes = entry.get('Notes', 'No notes')
-            print(f"   {day} {time}: {notes}")
+            print(f"   {account}: {email} -> {court} -> {day} {time}")
+        
+        # Test filtering by day (example with Saturday)
+        saturday_assignments = [a for a in assignments_data if a.get('Day', '').lower() == 'saturday']
+        print(f"✅ Saturday assignments: {len(saturday_assignments)}")
+        for entry in saturday_assignments:
+            account = entry.get('Account', 'Unknown')
+            time = entry.get('Time', 'No time')
+            court = entry.get('Court Number', 'No court')
+            print(f"   {account} -> {court} -> {time}")
         
         return True
         

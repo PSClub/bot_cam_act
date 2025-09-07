@@ -224,14 +224,8 @@ class SheetsManager:
         """
         return self._read_worksheet_to_dicts("BookingSchedule", "account and booking assignments")
     
-    def read_booking_schedule_sheet(self):
-        """
-        Read the Booking Schedule sheet.
-        
-        Returns:
-            list: List of dictionaries with booking schedule
-        """
-        return self._read_worksheet_to_dicts("Booking Schedule")
+    # REMOVED: read_booking_schedule_sheet - legacy method from old system
+    # Use read_booking_assignments instead
     
     def write_booking_log(self, log_entry):
         """

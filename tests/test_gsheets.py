@@ -57,39 +57,34 @@ def test_gsheets_integration():
             return False
         print()
         
-        # Test reading configuration sheet
-        print(f"{get_timestamp()} --- Testing Account & Court Configuration sheet ---")
+        # Test reading booking assignments (new simplified system)
+        print(f"{get_timestamp()} --- Testing BookingSchedule sheet (simplified system) ---")
         try:
-            config_data = sheets_manager.read_configuration_sheet()
-            if config_data:
-                print(f"{get_timestamp()} ✅ Successfully read {len(config_data)} configuration entries")
-                print(f"{get_timestamp()} 📋 Sample configuration:")
-                for i, entry in enumerate(config_data[:3]):  # Show first 3 entries
-                    print(f"{get_timestamp()}   {i+1}. Account: {entry.get('Account', 'N/A')}, Court: {entry.get('Court Number', 'N/A')}")
-                if len(config_data) > 3:
-                    print(f"{get_timestamp()}   ... and {len(config_data) - 3} more")
+            assignments_data = sheets_manager.read_booking_assignments()
+            if assignments_data:
+                print(f"{get_timestamp()} ✅ Successfully read {len(assignments_data)} booking assignments")
+                print(f"{get_timestamp()} 📋 Sample assignments:")
+                for i, entry in enumerate(assignments_data[:5]):  # Show first 5 entries
+                    account = entry.get('Account', 'N/A')
+                    day = entry.get('Day', 'N/A')
+                    time = entry.get('Time', 'N/A')
+                    court = entry.get('Court Number', 'N/A')
+                    print(f"{get_timestamp()}   {i+1}. {account} -> {court} -> {day} {time}")
+                if len(assignments_data) > 5:
+                    print(f"{get_timestamp()}   ... and {len(assignments_data) - 5} more")
+                
+                # Test filtering by day
+                saturday_assignments = [a for a in assignments_data if a.get('Day', '').lower() == 'saturday']
+                print(f"{get_timestamp()} 📋 Saturday assignments: {len(saturday_assignments)}")
+                for entry in saturday_assignments[:3]:
+                    account = entry.get('Account', 'N/A')
+                    time = entry.get('Time', 'N/A')
+                    court = entry.get('Court Number', 'N/A')
+                    print(f"{get_timestamp()}     {account} -> {court} -> {time}")
             else:
-                print(f"{get_timestamp()} ⚠️ No configuration data found")
+                print(f"{get_timestamp()} ⚠️ No booking assignments found")
         except Exception as e:
-            print(f"{get_timestamp()} ❌ Error reading configuration sheet: {e}")
-            return False
-        print()
-        
-        # Test reading booking schedule sheet
-        print(f"{get_timestamp()} --- Testing Booking Schedule sheet ---")
-        try:
-            schedule_data = sheets_manager.read_booking_schedule_sheet()
-            if schedule_data:
-                print(f"{get_timestamp()} ✅ Successfully read {len(schedule_data)} schedule entries")
-                print(f"{get_timestamp()} 📋 Sample schedule:")
-                for i, entry in enumerate(schedule_data[:5]):  # Show first 5 entries
-                    print(f"{get_timestamp()}   {i+1}. {entry.get('Day', 'N/A')} at {entry.get('Time', 'N/A')} - {entry.get('Notes', 'N/A')}")
-                if len(schedule_data) > 5:
-                    print(f"{get_timestamp()}   ... and {len(schedule_data) - 5} more")
-            else:
-                print(f"{get_timestamp()} ⚠️ No schedule data found")
-        except Exception as e:
-            print(f"{get_timestamp()} ❌ Error reading booking schedule sheet: {e}")
+            print(f"{get_timestamp()} ❌ Error reading booking assignments: {e}")
             return False
         print()
         
@@ -133,9 +128,10 @@ def test_gsheets_integration():
             return False
         print()
         
-        # Test connection verification
+        # Test connection verification using the standalone function
         print(f"{get_timestamp()} --- Testing connection verification ---")
-        connection_test = sheets_manager.test_sheets_connection()
+        from sheets_manager import test_sheets_connection
+        connection_test = test_sheets_connection(sheet_id, service_account_json)
         if connection_test:
             print(f"{get_timestamp()} ✅ Connection test passed")
         else:

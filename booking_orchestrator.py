@@ -24,9 +24,9 @@ class BookingOrchestrator:
         self.slots_to_book = []
     
     async def initialize(self):
-        """Initialize the booking system."""
+        """Initialize the simplified booking system."""
         try:
-            print(f"{get_timestamp()} === Initializing Multi-Court Booking System ===")
+            print(f"{get_timestamp()} === Initializing Simplified Booking System ===")
             
             # Initialize Google Sheets manager
             if not GSHEET_MAIN_ID or not GOOGLE_SERVICE_ACCOUNT_JSON:
@@ -38,17 +38,7 @@ class BookingOrchestrator:
             # Initialize multi-session manager
             self.multi_session_manager = MultiSessionManager(self.sheets_manager)
             
-            # Initialize browser sessions
-            headless = not SHOW_BROWSER
-            if not await self.multi_session_manager.initialize_sessions(headless):
-                raise Exception("Failed to initialize browser sessions")
-            
-            print(f"{get_timestamp()} ✅ Multi-session manager initialized")
-            
-            # Read booking schedule
-            await self.load_booking_schedule()
-            
-            print(f"{get_timestamp()} ✅ Booking orchestrator initialized successfully")
+            print(f"{get_timestamp()} ✅ Simplified booking orchestrator initialized successfully")
             return True
             
         except Exception as e:
@@ -130,74 +120,104 @@ class BookingOrchestrator:
             dict: Dictionary mapping session index to slot time
         """
         try:
-            print(f"{get_timestamp()} --- Distributing {len(self.slots_to_book)} slots among {len(self.multi_session_manager.sessions)} accounts ---")
+            print(f"{get_timestamp()} === SLOT DISTRIBUTION STARTING ===")
+            print(f"{get_timestamp()} 📊 Available slots: {self.slots_to_book}")
+            print(f"{get_timestamp()} 📊 Active sessions: {len(self.multi_session_manager.sessions)}")
+            
+            # Print all active sessions first
+            for i, session in enumerate(self.multi_session_manager.sessions):
+                print(f"{get_timestamp()} 👤 Session {i}: {session.account_name} ({session.email}) -> {session.court_number}")
             
             slot_distribution = {}
             active_sessions = self.multi_session_manager.sessions
             
             # Distribute slots in round-robin fashion
+            print(f"{get_timestamp()} --- Starting slot assignment ---")
             for i, slot_time in enumerate(self.slots_to_book):
                 if i < len(active_sessions):
                     session_index = i
-                    account_name = active_sessions[session_index].account_name
+                    session = active_sessions[session_index]
+                    account_name = session.account_name
+                    court_number = session.court_number
                     slot_distribution[session_index] = slot_time
-                    print(f"{get_timestamp()} 🎯 {account_name} assigned slot: {slot_time}")
+                    print(f"{get_timestamp()} 🎯 ASSIGNMENT: {account_name} ({court_number}) -> SLOT {slot_time}")
                 else:
-                    print(f"{get_timestamp()} ⚠️ More slots ({len(self.slots_to_book)}) than accounts ({len(active_sessions)}) - slot {slot_time} will not be booked")
+                    print(f"{get_timestamp()} ⚠️ EXCESS SLOT: {slot_time} (more slots than accounts)")
             
-            print(f"{get_timestamp()} ✅ Slot distribution complete: {len(slot_distribution)} assignments made")
+            print(f"{get_timestamp()} === SLOT DISTRIBUTION SUMMARY ===")
+            print(f"{get_timestamp()} 📋 Total assignments made: {len(slot_distribution)}")
+            for session_index, slot_time in slot_distribution.items():
+                session = active_sessions[session_index]
+                print(f"{get_timestamp()} 📌 {session.account_name} will attempt to book {slot_time} on {session.court_number}")
+            
+            if not slot_distribution:
+                print(f"{get_timestamp()} ❌ WARNING: No slot assignments made!")
+                return {}
+            
+            # Warn if there are more accounts than slots
+            if len(self.slots_to_book) < len(active_sessions):
+                unassigned_accounts = []
+                for i in range(len(self.slots_to_book), len(active_sessions)):
+                    unassigned_accounts.append(active_sessions[i].account_name)
+                print(f"{get_timestamp()} ⚠️ WARNING: {len(unassigned_accounts)} accounts will NOT get slots:")
+                for account in unassigned_accounts:
+                    print(f"{get_timestamp()}   - {account} (no slot available)")
+                print(f"{get_timestamp()} 💡 SOLUTION: Add more slots to {self.target_day_name} in your booking schedule")
+            
             return slot_distribution
             
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error distributing slots: {e}")
+            import traceback
+            print(f"{get_timestamp()} 🔍 Full error: {traceback.format_exc()}")
             return {}
     
     async def execute_booking_process(self):
-        """Execute the complete booking process."""
+        """Execute the simplified booking process using pre-assigned slots."""
         try:
-            print(f"{get_timestamp()} === Starting Multi-Court Booking Process ===")
+            print(f"{get_timestamp()} === Starting Simplified Booking Process ===")
             
             # Step 1: Calculate target date
             self.calculate_target_date()
             
-            # Step 2: Determine slots to book
-            if not self.determine_slots_to_book():
-                print(f"{get_timestamp()} ⚠️ No slots to book for {self.target_day_name}")
+            # Step 2: Initialize sessions with their pre-assigned slots
+            print(f"{get_timestamp()} --- Step 1: Initializing sessions with assignments ---")
+            headless = not SHOW_BROWSER
+            if not await self.multi_session_manager.initialize_sessions_with_assignments(self.target_day_name, headless):
+                print(f"{get_timestamp()} ❌ Failed to initialize sessions with assignments")
                 return False
             
             # Step 3: Login to all sessions
-            print(f"{get_timestamp()} --- Step 1: Logging in all sessions ---")
+            print(f"{get_timestamp()} --- Step 2: Logging in all sessions ---")
             if not await self.multi_session_manager.login_all_sessions():
                 print(f"{get_timestamp()} ❌ Failed to login to any sessions")
                 return False
             
-            # Step 4: Distribute slots among sessions (one slot per account)
-            print(f"{get_timestamp()} --- Step 2: Distributing slots among accounts ---")
-            slot_distribution = self.distribute_slots_among_sessions()
-            
-            # Step 5: Book distributed slots for each session
-            print(f"{get_timestamp()} --- Step 3: Booking distributed slots ---")
+            # Step 4: Book pre-assigned slots
+            print(f"{get_timestamp()} --- Step 3: Booking pre-assigned slots ---")
             target_date_str = self.target_date.strftime('%d/%m/%Y')
-            if not await self.multi_session_manager.book_distributed_slots(target_date_str, slot_distribution):
+            if not await self.multi_session_manager.book_assigned_slots(target_date_str):
                 print(f"{get_timestamp()} ⚠️ No successful bookings made")
             
-            # Step 6: Process checkout for all sessions
+            # Step 5: Process checkout for all sessions
             print(f"{get_timestamp()} --- Step 4: Processing checkout ---")
             await self.multi_session_manager.checkout_all_sessions()
             
-            # Step 7: Logout and cleanup
+            # Step 6: Logout and cleanup
             print(f"{get_timestamp()} --- Step 5: Logging out and cleanup ---")
             await self.multi_session_manager.logout_all_sessions()
             await self.multi_session_manager.cleanup_all_sessions()
             
-            # Step 8: Generate summary
+            # Step 7: Generate summary
             await self.generate_booking_summary()
             
-            print(f"{get_timestamp()} === Multi-Court Booking Process Completed ===")
+            print(f"{get_timestamp()} === Simplified Booking Process Completed ===")
             return True
             
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error during booking process: {e}")
+            import traceback
+            print(f"{get_timestamp()} 🔍 Full error: {traceback.format_exc()}")
             
             # Ensure cleanup happens even on error
             try:

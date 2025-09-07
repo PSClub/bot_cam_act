@@ -134,8 +134,14 @@ class BookingSession:
         This function only adds items to the basket.
         """
         try:
-            self.log_message(f"{get_timestamp()} --- {self.account_name} adding {len(slots_to_book)} slots to basket for {target_date} ---")
+            self.log_message(f"{get_timestamp()} === {self.account_name} BOOKING SESSION START ===")
+            self.log_message(f"{get_timestamp()} 📅 Target Date: {target_date}")
+            self.log_message(f"{get_timestamp()} 🎯 Slots to book: {slots_to_book}")
+            self.log_message(f"{get_timestamp()} 🏟️ Court: {self.court_number}")
+            self.log_message(f"{get_timestamp()} 🌐 Court URL: {self.court_url}")
+            
             self.total_attempts = len(slots_to_book)
+            print(f"{get_timestamp()} 🔍 DEBUG: {self.account_name} total_attempts set to {self.total_attempts}")
 
             # Navigate to court if not already there
             if self.current_court_url != self.court_url:
@@ -169,7 +175,24 @@ class BookingSession:
                 else:
                     self.failed_bookings.append(slot_details)
             
+            self.log_message(f"{get_timestamp()} === {self.account_name} BOOKING SESSION COMPLETE ===")
+            self.log_message(f"{get_timestamp()} 📊 Total attempts: {self.total_attempts}")
+            self.log_message(f"{get_timestamp()} 📊 Successful bookings: {len(self.successful_bookings)}")
+            self.log_message(f"{get_timestamp()} 📊 Failed bookings: {len(self.failed_bookings)}")
             self.log_message(f"{get_timestamp()} 📊 Basket summary: {len(self.successful_bookings)} added, {len(self.failed_bookings)} failed.")
+            
+            if self.successful_bookings:
+                self.log_message(f"{get_timestamp()} ✅ Successfully added to basket:")
+                for booking in self.successful_bookings:
+                    court_url, date, time = booking
+                    self.log_message(f"{get_timestamp()}   - {time} on {date}")
+            
+            if self.failed_bookings:
+                self.log_message(f"{get_timestamp()} ❌ Failed to add to basket:")
+                for booking in self.failed_bookings:
+                    court_url, date, time = booking
+                    self.log_message(f"{get_timestamp()}   - {time} on {date}")
+            
             return len(self.successful_bookings) > 0
 
         except Exception as e:
@@ -310,30 +333,41 @@ class MultiSessionManager:
         for session in self.sessions:
             session.log_message(message)
     
-    async def initialize_sessions(self, headless=True):
-        """Initialize all booking sessions."""
+    async def initialize_sessions_with_assignments(self, target_day, headless=True):
+        """Initialize booking sessions with their specific day/time assignments."""
         try:
-            self.broadcast_message(f"{get_timestamp()} === Initializing Multi-Session Booking System ===")
+            self.broadcast_message(f"{get_timestamp()} === Initializing Sessions with Assignments for {target_day} ===")
             
-            # Read configuration from Google Sheets
-            config_data = self.sheets_manager.read_configuration_sheet()
+            # Read booking assignments from Google Sheets
+            booking_assignments = self.sheets_manager.read_booking_assignments()
             
-            # Create booking sessions for each account
-            for config_entry in config_data:
-                account_name = config_entry.get('Account', '')
-                email = config_entry.get('Email', '')
-                court_number = config_entry.get('Court Number', '')
-                court_url = config_entry.get('Court URL', '')
+            # Filter assignments for the target day
+            day_assignments = [assignment for assignment in booking_assignments 
+                             if assignment.get('Day', '').strip().lower() == target_day.lower()]
+            
+            if not day_assignments:
+                print(f"{get_timestamp()} ⚠️ No assignments found for {target_day}")
+                return False
+            
+            print(f"{get_timestamp()} 📋 Found {len(day_assignments)} assignments for {target_day}")
+            
+            # Create booking sessions for each assignment
+            for assignment in day_assignments:
+                account_name = assignment.get('Account', '').strip()
+                email = assignment.get('Email', '').strip()
+                court_number = assignment.get('Court Number', '').strip()
+                court_url = assignment.get('Court URL', '').strip()
+                time_slot = assignment.get('Time', '').strip()
                 
                 # Get password from environment variables
                 password_env_var = f"{account_name.upper()}_CAM_PASSWORD"
                 password = os.environ.get(password_env_var)
                 
-                if not all([account_name, email, password, court_number, court_url]):
-                    print(f"{get_timestamp()} ⚠️ Skipping incomplete configuration for {account_name}")
+                if not all([account_name, email, password, court_number, court_url, time_slot]):
+                    print(f"{get_timestamp()} ⚠️ Skipping incomplete assignment: {account_name} - missing data")
                     continue
                 
-                # Create booking session
+                # Create booking session with assignment
                 session = BookingSession(
                     account_name=account_name,
                     email=email,
@@ -343,18 +377,23 @@ class MultiSessionManager:
                     sheets_manager=self.sheets_manager
                 )
                 
+                # Store the specific time assignment for this session
+                session.assigned_time_slot = time_slot
+                
                 # Initialize browser
                 if await session.initialize_browser(headless):
                     self.sessions.append(session)
-                    print(f"{get_timestamp()} ✅ Session initialized for {account_name}")
+                    print(f"{get_timestamp()} ✅ Session initialized: {account_name} -> {court_number} -> {time_slot}")
                 else:
                     print(f"{get_timestamp()} ❌ Failed to initialize session for {account_name}")
             
-            self.broadcast_message(f"{get_timestamp()} ✅ Initialized {len(self.sessions)} booking sessions")
+            self.broadcast_message(f"{get_timestamp()} ✅ Initialized {len(self.sessions)} sessions with assignments")
             return len(self.sessions) > 0
             
         except Exception as e:
-            print(f"{get_timestamp()} ❌ Error initializing sessions: {e}")
+            print(f"{get_timestamp()} ❌ Error initializing sessions with assignments: {e}")
+            import traceback
+            print(f"{get_timestamp()} 🔍 Full error: {traceback.format_exc()}")
             return False
     
     async def login_all_sessions(self):
@@ -468,10 +507,14 @@ class MultiSessionManager:
             slot_distribution (dict): Dictionary mapping session index to slot time
         """
         try:
-            self.broadcast_message(f"{get_timestamp()} === Booking distributed slots for {target_date} ===")
+            self.broadcast_message(f"{get_timestamp()} === BOOKING DISTRIBUTED SLOTS FOR {target_date} ===")
+            print(f"{get_timestamp()} 📊 Slot distribution received: {slot_distribution}")
+            print(f"{get_timestamp()} 📊 Total sessions available: {len(self.sessions)}")
             
             # Create booking tasks for each session with their assigned slot
             booking_tasks = []
+            task_session_mapping = []  # Track which task corresponds to which session
+            
             for session_index, slot_time in slot_distribution.items():
                 if session_index < len(self.sessions):
                     session = self.sessions[session_index]
@@ -479,19 +522,28 @@ class MultiSessionManager:
                     slots_for_session = [slot_time]
                     task = session.book_slots_for_day(target_date, slots_for_session)
                     booking_tasks.append(task)
-                    print(f"{get_timestamp()} 📋 Queued {session.account_name} to book slot {slot_time}")
+                    task_session_mapping.append((session_index, session, slot_time))
+                    print(f"{get_timestamp()} 🎯 BOOKING TASK CREATED: {session.account_name} ({session.email}) -> {session.court_number} -> SLOT {slot_time}")
+                else:
+                    print(f"{get_timestamp()} ❌ Invalid session index {session_index} (max: {len(self.sessions)-1})")
             
             if not booking_tasks:
-                print(f"{get_timestamp()} ⚠️ No booking tasks created")
+                print(f"{get_timestamp()} ❌ ERROR: No booking tasks created!")
+                print(f"{get_timestamp()} 🔍 Debug - slot_distribution: {slot_distribution}")
+                print(f"{get_timestamp()} 🔍 Debug - sessions count: {len(self.sessions)}")
                 return False
+            
+            print(f"{get_timestamp()} 📋 Created {len(booking_tasks)} booking tasks")
             
             # Execute all booking tasks concurrently
             booking_results = await asyncio.gather(*booking_tasks, return_exceptions=True)
             
             # Collect results with detailed error handling
+            print(f"{get_timestamp()} === PROCESSING BOOKING RESULTS ===")
             for i, result in enumerate(booking_results):
-                session_index = list(slot_distribution.keys())[i]
-                session = self.sessions[session_index]
+                session_index, session, assigned_slot = task_session_mapping[i]
+                
+                print(f"{get_timestamp()} 📋 Processing result {i+1}/{len(booking_results)}: {session.account_name} -> {assigned_slot}")
                 
                 if isinstance(result, Exception):
                     # Handle specific exception types for better debugging
@@ -517,14 +569,14 @@ class MultiSessionManager:
                     self.all_failed_bookings.extend(session.failed_bookings)
                 elif result:
                     # Only print to console, don't broadcast to all session logs to avoid email leakage
-                    assigned_slot = slot_distribution[session_index]
-                    print(f"{get_timestamp()} ✅ {session.account_name} completed booking attempt for slot {assigned_slot}")
+                    print(f"{get_timestamp()} ✅ {session.account_name} COMPLETED booking attempt for slot {assigned_slot}")
+                    print(f"{get_timestamp()} 📊 {session.account_name} results: {len(session.successful_bookings)} successful, {len(session.failed_bookings)} failed")
                     self.all_successful_bookings.extend(session.successful_bookings)
                     self.all_failed_bookings.extend(session.failed_bookings)
                 else:
                     # Only print to console, don't broadcast to all session logs to avoid email leakage
-                    assigned_slot = slot_distribution[session_index]
-                    print(f"{get_timestamp()} ❌ {session.account_name} failed to book slot {assigned_slot}")
+                    print(f"{get_timestamp()} ❌ {session.account_name} FAILED to book slot {assigned_slot}")
+                    print(f"{get_timestamp()} 📊 {session.account_name} results: {len(session.successful_bookings)} successful, {len(session.failed_bookings)} failed")
                     # Even if the session failed, collect any failed bookings that were attempted
                     self.all_failed_bookings.extend(session.failed_bookings)
             
@@ -547,6 +599,102 @@ class MultiSessionManager:
             
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error during distributed booking process: {e}")
+            return False
+    
+    async def book_assigned_slots(self, target_date):
+        """
+        Book the pre-assigned slots for each session. Much simpler than distribution logic.
+        
+        Args:
+            target_date (str): Target date in DD/MM/YYYY format
+        """
+        try:
+            self.broadcast_message(f"{get_timestamp()} === BOOKING PRE-ASSIGNED SLOTS FOR {target_date} ===")
+            
+            # Create booking tasks for each session with their pre-assigned slot
+            booking_tasks = []
+            
+            for session in self.sessions:
+                if hasattr(session, 'assigned_time_slot'):
+                    # Each session books only their assigned slot
+                    slots_for_session = [session.assigned_time_slot]
+                    task = session.book_slots_for_day(target_date, slots_for_session)
+                    booking_tasks.append(task)
+                    print(f"{get_timestamp()} 🎯 ASSIGNED BOOKING: {session.account_name} ({session.email}) -> {session.court_number} -> SLOT {session.assigned_time_slot}")
+                else:
+                    print(f"{get_timestamp()} ❌ ERROR: {session.account_name} has no assigned time slot")
+            
+            if not booking_tasks:
+                print(f"{get_timestamp()} ❌ ERROR: No booking tasks created!")
+                return False
+            
+            print(f"{get_timestamp()} 📋 Created {len(booking_tasks)} pre-assigned booking tasks")
+            
+            # Execute all booking tasks concurrently
+            booking_results = await asyncio.gather(*booking_tasks, return_exceptions=True)
+            
+            # Collect results with detailed error handling
+            print(f"{get_timestamp()} === PROCESSING BOOKING RESULTS ===")
+            for i, result in enumerate(booking_results):
+                session = self.sessions[i]
+                assigned_slot = session.assigned_time_slot
+                
+                print(f"{get_timestamp()} 📋 Processing result {i+1}/{len(booking_results)}: {session.account_name} -> {assigned_slot}")
+                
+                if isinstance(result, Exception):
+                    # Handle specific exception types for better debugging
+                    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+                    
+                    if isinstance(result, PlaywrightTimeoutError):
+                        print(f"{get_timestamp()} ❌ Booking timeout for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 This might be due to slow page loading or network issues")
+                    elif isinstance(result, ConnectionError):
+                        print(f"{get_timestamp()} ❌ Network connection failed for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 Check internet connection and try again")
+                    elif isinstance(result, ValueError):
+                        print(f"{get_timestamp()} ❌ Invalid data for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 Check booking date/time format or court configuration")
+                    elif isinstance(result, PermissionError):
+                        print(f"{get_timestamp()} ❌ Permission denied for {session.account_name}: {result}")
+                        print(f"{get_timestamp()}   💡 Check browser permissions or authentication")
+                    else:
+                        print(f"{get_timestamp()} ❌ Unexpected error for {session.account_name}: {type(result).__name__}: {result}")
+                        print(f"{get_timestamp()}   💡 This may require manual investigation")
+                    
+                    # Even if the session failed, collect any failed bookings that were attempted
+                    self.all_failed_bookings.extend(session.failed_bookings)
+                elif result:
+                    print(f"{get_timestamp()} ✅ {session.account_name} COMPLETED booking attempt for slot {assigned_slot}")
+                    print(f"{get_timestamp()} 📊 {session.account_name} results: {len(session.successful_bookings)} successful, {len(session.failed_bookings)} failed")
+                    self.all_successful_bookings.extend(session.successful_bookings)
+                    self.all_failed_bookings.extend(session.failed_bookings)
+                else:
+                    print(f"{get_timestamp()} ❌ {session.account_name} FAILED to book slot {assigned_slot}")
+                    print(f"{get_timestamp()} 📊 {session.account_name} results: {len(session.successful_bookings)} successful, {len(session.failed_bookings)} failed")
+                    # Even if the session failed, collect any failed bookings that were attempted
+                    self.all_failed_bookings.extend(session.failed_bookings)
+            
+            total_successful = len(self.all_successful_bookings)
+            total_failed = len(self.all_failed_bookings)
+            
+            self.broadcast_message(f"{get_timestamp()} === PRE-ASSIGNED BOOKING SUMMARY ===")
+            self.broadcast_message(f"{get_timestamp()} 📊 Total Successful Bookings: {total_successful}")
+            self.broadcast_message(f"{get_timestamp()} 📊 Total Failed Bookings: {total_failed}")
+            
+            # Debug: Print detailed results for each session
+            for session in self.sessions:
+                print(f"{get_timestamp()} 📊 {session.account_name}: {len(session.successful_bookings)}✅ {len(session.failed_bookings)}❌")
+                if session.successful_bookings:
+                    print(f"{get_timestamp()}   ✅ Successful: {session.successful_bookings}")
+                if session.failed_bookings:
+                    print(f"{get_timestamp()}   ❌ Failed: {session.failed_bookings}")
+            
+            return total_successful > 0
+            
+        except Exception as e:
+            print(f"{get_timestamp()} ❌ Error during pre-assigned booking process: {e}")
+            import traceback
+            print(f"{get_timestamp()} 🔍 Full error: {traceback.format_exc()}")
             return False
     
     async def checkout_all_sessions(self):

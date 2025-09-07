@@ -105,16 +105,39 @@ Configure these as **Secrets** in your repository settings:
 
 ## Google Sheets Configuration
 
-Ensure your Google Sheets has the "Account & Court Configuration" sheet with the following structure:
+### **Account & Court Configuration Sheet**
+
+Your configuration looks correct! ✅
 
 | Account | Email | Password | Court Number | Court URL |
 |---------|-------|----------|--------------|-----------|
-| Mother | `[email from secrets]` | `[from secrets]` | Court 1 | `https://camdenactive.camden.gov.uk/courses/detail/171/lincoln-s-inn-fields-tennis-court-1/` |
-| Father | `[email from secrets]` | `[from secrets]` | Court 2 | `https://camdenactive.camden.gov.uk/courses/detail/176/lincoln-s-inn-fields-tennis-court-2/` |
-| Bruce | `[email from secrets]` | `[from secrets]` | Court 3 | `https://camdenactive.camden.gov.uk/courses/detail/177/lincoln-s-inn-fields-tennis-court-3/` |
-| Sallie | `[email from secrets]` | `[from secrets]` | Court 1 | `https://camdenactive.camden.gov.uk/courses/detail/171/lincoln-s-inn-fields-tennis-court-1/` |
-| Jan | `[email from secrets]` | `[from secrets]` | Court 2 | `https://camdenactive.camden.gov.uk/courses/detail/176/lincoln-s-inn-fields-tennis-court-2/` |
-| Jo | `[email from secrets]` | `[from secrets]` | Court 3 | `https://camdenactive.camden.gov.uk/courses/detail/177/lincoln-s-inn-fields-tennis-court-3/` |
+| Mother | `1140749429@qq.com` | `[from secrets]` | Court 1 | `https://camdenactive.camden.gov.uk/courses/detail/171/lincoln-s-inn-fields-tennis-court-1/` |
+| Father | `huay43105@gmail.com` | `[from secrets]` | Court 2 | `https://camdenactive.camden.gov.uk/courses/detail/176/lincoln-s-inn-fields-tennis-court-2/` |
+| Bruce | `brcwood48@gmail.com` | `[from secrets]` | Court 3 | `https://camdenactive.camden.gov.uk/courses/detail/177/lincoln-s-inn-fields-tennis-court-3/` |
+| Sallie | `salliebecker01@gmail.com` | `[from secrets]` | Court 1 | `https://camdenactive.camden.gov.uk/courses/detail/171/lincoln-s-inn-fields-tennis-court-1/` |
+| Jan | `j.kowalsto@gmail.com` | `[from secrets]` | Court 2 | `https://camdenactive.camden.gov.uk/courses/detail/176/lincoln-s-inn-fields-tennis-court-2/` |
+| Jo | `jomoseleyjo@gmail.com` | `[from secrets]` | Court 3 | `https://camdenactive.camden.gov.uk/courses/detail/177/lincoln-s-inn-fields-tennis-court-3/` |
+
+### **⚠️ Booking Schedule Issue - NEEDS FIXING**
+
+Your current booking schedule only has **2 slots for Saturday** but **6 accounts**:
+
+**Current Saturday Schedule:**
+- 1400 (2:00 PM)
+- 1500 (3:00 PM)
+
+**Result:** Only Mother and Father get slots, Bruce/Sallie/Jan/Jo get nothing!
+
+**SOLUTION:** Add more Saturday slots to your booking schedule sheet:
+
+| Day | Time | Notes |
+|-----|------|--------|
+| Saturday | 1400 | All year |
+| Saturday | 1500 | All year |
+| **Saturday** | **1600** | **All year** ← ADD THIS |
+| **Saturday** | **1700** | **All year** ← ADD THIS |
+| **Saturday** | **1800** | **All year** ← ADD THIS |
+| **Saturday** | **1900** | **All year** ← ADD THIS |
 
 ## How It Works Now
 

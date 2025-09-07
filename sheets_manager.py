@@ -215,14 +215,14 @@ class SheetsManager:
         
         return log_entry
     
-    def read_configuration_sheet(self):
+    def read_booking_assignments(self):
         """
-        Read the Account & Court Configuration sheet.
+        Read the BookingSchedule sheet which now contains both account config and booking assignments.
         
         Returns:
-            list: List of dictionaries with account configuration
+            list: List of dictionaries with account and booking assignment data
         """
-        return self._read_worksheet_to_dicts("Account & Court Configuration")
+        return self._read_worksheet_to_dicts("BookingSchedule", "account and booking assignments")
     
     def read_booking_schedule_sheet(self):
         """

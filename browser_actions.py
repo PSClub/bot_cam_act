@@ -254,13 +254,31 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
                 await page.wait_for_load_state('domcontentloaded', timeout=15000)
 
             except Exception as e:
-                log_msg = f"{get_timestamp()} ⚠️ Could not click 'Next Week' or page did not load in time. Error: {e}. Retrying..."
+                log_msg = f"{get_timestamp()} ⚠️ Click/Load failed: {e}. Attempting hard re-navigation..."
                 if session:
                     session.log_message(log_msg)
                 else:
                     print(log_msg)
-                # If clicking fails, try reloading the page to recover
-                await page.reload(wait_until="domcontentloaded", timeout=20000)
+                
+                # HARD RESET: Instead of just reloading a broken page, re-navigate to the court URL.
+                try:
+                    court_url_to_recover = slot_details[0]
+                    await page.goto(court_url_to_recover, wait_until="domcontentloaded", timeout=20000)
+                    
+                    # CRITICAL: We must re-apply the 3 strategic "Next Week" clicks 
+                    # to get back to the correct starting week for the race.
+                    log_msg = f"{get_timestamp()} 🔄 Recovery navigation complete. Re-applying 3-week strategic advance..."
+                    if session: session.log_message(log_msg)
+                    
+                    for i in range(3):
+                         await page.locator("#ctl00_PageContent_btnNextWeek").click(timeout=10000)
+                         await page.wait_for_load_state('domcontentloaded', timeout=10000)
+
+                except Exception as nav_error:
+                    log_msg = f"{get_timestamp()} ❌ CRITICAL: Hard recovery navigation failed: {nav_error}. Loop continues but likely lost."
+                    if session: session.log_message(log_msg)
+                    # If the hard reset fails, sleep briefly just to stop rapid error looping.
+                    await asyncio.sleep(2)
 
         # If the loop finishes without finding the date, it has timed out
         log_msg = f"{get_timestamp()} ⏰ Timeout of {timeout_minutes} minutes reached. Could not find target date."

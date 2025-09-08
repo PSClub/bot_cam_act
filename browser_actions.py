@@ -430,7 +430,7 @@ async def find_date_on_calendar(page, target_date_str, slot_details, is_strategi
                 await next_week_button.click()
                 await page.wait_for_load_state('domcontentloaded', timeout=15000)
                 # Give extra time for any JavaScript to update the calendar
-                await asyncio.sleep(1)
+                #await asyncio.sleep(1)
                 
                 # Take screenshot after each week advancement
                 await take_screenshot(page, f"week_advance_{i+1}", slot_details, session=session)

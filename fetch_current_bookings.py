@@ -36,6 +36,15 @@ from playwright.async_api import async_playwright
 from typing import List, Dict, Optional
 
 # Import existing modules
+from config import (
+    LOGIN_URL, GSHEET_MAIN_ID, GOOGLE_SERVICE_ACCOUNT_JSON,
+    MOTHER_EMAIL, MOTHER_PASSWORD,
+    FATHER_EMAIL, FATHER_PASSWORD, 
+    BRUCE_EMAIL, BRUCE_PASSWORD,
+    SALLIE_EMAIL, SALLIE_PASSWORD,
+    JAN_EMAIL, JAN_PASSWORD,
+    JO_EMAIL, JO_PASSWORD
+)
 from sheets_manager import SheetsManager
 from utils import get_timestamp, get_london_datetime
 
@@ -54,14 +63,13 @@ class BookingFetcher:
     
     def _setup_accounts(self):
         """Set up the accounts configuration from environment variables."""
-        # Get credentials directly from environment variables
         account_configs = [
-            ("Mother", os.environ.get("MOTHER_CAM_EMAIL_ADDRESS"), os.environ.get("MOTHER_CAM_PASSWORD")),
-            ("Father", os.environ.get("FATHER_CAM_EMAIL_ADDRESS"), os.environ.get("FATHER_CAM_PASSWORD")),
-            ("Bruce", os.environ.get("BRUCE_CAM_EMAIL_ADDRESS"), os.environ.get("BRUCE_CAM_PASSWORD")),
-            ("Sallie", os.environ.get("SALLIE_CAM_EMAIL_ADDRESS"), os.environ.get("SALLIE_CAM_PASSWORD")),
-            ("Jan", os.environ.get("JAN_CAM_EMAIL_ADDRESS"), os.environ.get("JAN_CAM_PASSWORD")),
-            ("Jo", os.environ.get("JO_CAM_EMAIL_ADDRESS"), os.environ.get("JO_CAM_PASSWORD"))
+            ("Mother", MOTHER_EMAIL, MOTHER_PASSWORD),
+            ("Father", FATHER_EMAIL, FATHER_PASSWORD),
+            ("Bruce", BRUCE_EMAIL, BRUCE_PASSWORD),
+            ("Sallie", SALLIE_EMAIL, SALLIE_PASSWORD),
+            ("Jan", JAN_EMAIL, JAN_PASSWORD),
+            ("Jo", JO_EMAIL, JO_PASSWORD)
         ]
         
         for name, email, password in account_configs:
@@ -76,26 +84,16 @@ class BookingFetcher:
                 print(f"{get_timestamp()} ⚠️ Skipping account {name}: missing credentials")
         
         print(f"{get_timestamp()} 📋 Configured {len(self.accounts)} accounts for booking fetch")
-        
-        # Debug: Show what environment variables are available
-        print(f"{get_timestamp()} 🔍 Debug - Environment variables check:")
-        for var in ['MOTHER_CAM_EMAIL_ADDRESS', 'FATHER_CAM_EMAIL_ADDRESS', 'BRUCE_CAM_EMAIL_ADDRESS']:
-            value = os.environ.get(var, 'NOT_SET')
-            print(f"{get_timestamp()}   {var}: {'SET' if value != 'NOT_SET' else 'NOT_SET'}")
     
     async def initialize_sheets(self):
         """Initialize Google Sheets connection."""
         try:
             print(f"{get_timestamp()} === Initializing Google Sheets ===")
             
-            # Get credentials directly from environment variables
-            sheet_id = os.environ.get("GSHEET_CAM_ID")
-            service_account_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-            
-            if not sheet_id or not service_account_json:
+            if not GSHEET_MAIN_ID or not GOOGLE_SERVICE_ACCOUNT_JSON:
                 raise ValueError("Google Sheets configuration not set")
             
-            self.sheets_manager = SheetsManager(sheet_id, service_account_json)
+            self.sheets_manager = SheetsManager(GSHEET_MAIN_ID, GOOGLE_SERVICE_ACCOUNT_JSON)
             print(f"{get_timestamp()} ✅ Google Sheets manager initialized")
             
             return True
@@ -129,8 +127,7 @@ class BookingFetcher:
             page = await browser.new_page()
             
             # Login to Camden Active
-            login_url = "https://camdenactive.camden.gov.uk/security/login.aspx"
-            await page.goto(login_url)
+            await page.goto(LOGIN_URL)
             
             # Handle privacy banner if present
             try:

@@ -36,15 +36,6 @@ from playwright.async_api import async_playwright
 from typing import List, Dict, Optional
 
 # Import existing modules
-from config import (
-    LOGIN_URL, GSHEET_MAIN_ID, GOOGLE_SERVICE_ACCOUNT_JSON,
-    MOTHER_EMAIL, MOTHER_PASSWORD,
-    FATHER_EMAIL, FATHER_PASSWORD, 
-    BRUCE_EMAIL, BRUCE_PASSWORD,
-    SALLIE_EMAIL, SALLIE_PASSWORD,
-    JAN_EMAIL, JAN_PASSWORD,
-    JO_EMAIL, JO_PASSWORD
-)
 from sheets_manager import SheetsManager
 from utils import get_timestamp, get_london_datetime
 
@@ -63,13 +54,14 @@ class BookingFetcher:
     
     def _setup_accounts(self):
         """Set up the accounts configuration from environment variables."""
+        # Get credentials directly from environment variables
         account_configs = [
-            ("Mother", MOTHER_EMAIL, MOTHER_PASSWORD),
-            ("Father", FATHER_EMAIL, FATHER_PASSWORD),
-            ("Bruce", BRUCE_EMAIL, BRUCE_PASSWORD),
-            ("Sallie", SALLIE_EMAIL, SALLIE_PASSWORD),
-            ("Jan", JAN_EMAIL, JAN_PASSWORD),
-            ("Jo", JO_EMAIL, JO_PASSWORD)
+            ("Mother", os.environ.get("MOTHER_CAM_EMAIL_ADDRESS"), os.environ.get("MOTHER_CAM_PASSWORD")),
+            ("Father", os.environ.get("FATHER_CAM_EMAIL_ADDRESS"), os.environ.get("FATHER_CAM_PASSWORD")),
+            ("Bruce", os.environ.get("BRUCE_CAM_EMAIL_ADDRESS"), os.environ.get("BRUCE_CAM_PASSWORD")),
+            ("Sallie", os.environ.get("SALLIE_CAM_EMAIL_ADDRESS"), os.environ.get("SALLIE_CAM_PASSWORD")),
+            ("Jan", os.environ.get("JAN_CAM_EMAIL_ADDRESS"), os.environ.get("JAN_CAM_PASSWORD")),
+            ("Jo", os.environ.get("JO_CAM_EMAIL_ADDRESS"), os.environ.get("JO_CAM_PASSWORD"))
         ]
         
         for name, email, password in account_configs:
@@ -79,18 +71,31 @@ class BookingFetcher:
                     'email': email,
                     'password': password
                 })
+                print(f"{get_timestamp()} ✅ Added account: {name} ({email})")
+            else:
+                print(f"{get_timestamp()} ⚠️ Skipping account {name}: missing credentials")
         
         print(f"{get_timestamp()} 📋 Configured {len(self.accounts)} accounts for booking fetch")
+        
+        # Debug: Show what environment variables are available
+        print(f"{get_timestamp()} 🔍 Debug - Environment variables check:")
+        for var in ['MOTHER_CAM_EMAIL_ADDRESS', 'FATHER_CAM_EMAIL_ADDRESS', 'BRUCE_CAM_EMAIL_ADDRESS']:
+            value = os.environ.get(var, 'NOT_SET')
+            print(f"{get_timestamp()}   {var}: {'SET' if value != 'NOT_SET' else 'NOT_SET'}")
     
     async def initialize_sheets(self):
         """Initialize Google Sheets connection."""
         try:
             print(f"{get_timestamp()} === Initializing Google Sheets ===")
             
-            if not GSHEET_MAIN_ID or not GOOGLE_SERVICE_ACCOUNT_JSON:
+            # Get credentials directly from environment variables
+            sheet_id = os.environ.get("GSHEET_CAM_ID")
+            service_account_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+            
+            if not sheet_id or not service_account_json:
                 raise ValueError("Google Sheets configuration not set")
             
-            self.sheets_manager = SheetsManager(GSHEET_MAIN_ID, GOOGLE_SERVICE_ACCOUNT_JSON)
+            self.sheets_manager = SheetsManager(sheet_id, service_account_json)
             print(f"{get_timestamp()} ✅ Google Sheets manager initialized")
             
             return True
@@ -124,7 +129,8 @@ class BookingFetcher:
             page = await browser.new_page()
             
             # Login to Camden Active
-            await page.goto(LOGIN_URL)
+            login_url = "https://camdenactive.camden.gov.uk/security/login.aspx"
+            await page.goto(login_url)
             
             # Handle privacy banner if present
             try:
@@ -373,7 +379,7 @@ class BookingFetcher:
             
             # Set up headers
             headers = ['Email', 'Booking Date', 'Facility', 'Court Number', 'Date', 'Time']
-            worksheet.update('A1:F1', [headers])
+            worksheet.update(values=[headers], range_name='A1:F1')
             
             # Prepare data rows
             data_rows = []
@@ -391,7 +397,7 @@ class BookingFetcher:
             # Update the sheet with all data at once
             if data_rows:
                 range_name = f'A2:F{len(data_rows) + 1}'
-                worksheet.update(range_name, data_rows)
+                worksheet.update(values=data_rows, range_name=range_name)
             
             # Add timestamp and summary
             london_time = get_london_datetime()
@@ -402,7 +408,7 @@ class BookingFetcher:
             ]
             
             start_row = len(data_rows) + 3
-            worksheet.update(f'A{start_row}:A{start_row + 2}', summary_info)
+            worksheet.update(values=summary_info, range_name=f'A{start_row}:A{start_row + 2}')
             
             print(f"{get_timestamp()} ✅ Successfully updated Google Sheet with {len(bookings)} bookings")
             

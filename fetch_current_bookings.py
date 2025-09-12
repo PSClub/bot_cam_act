@@ -201,13 +201,13 @@ class BookingFetcher:
 
             for i in range(0, len(all_columns), 3):
                 try:
-                    booking_made_date_raw, facility_info, date_time_info = all_columns[i:i+3]
+                    date_booking_made_raw, facility_info, date_time_info = all_columns[i:i+3]
                     facility_name, court_number = self._parse_facility_info(facility_info)
                     booking_date_parsed, booking_time = self._parse_date_time_info(date_time_info)
                     if facility_name and booking_date_parsed:
                         bookings.append({
                             'Email': email,
-                            'Date Booking Made': booking_made_date_raw.strip(),
+                            'Date Booking Made': date_booking_made_raw.strip(),
                             'Facility': facility_name,
                             'Court Number': court_number,
                             'Date': booking_date_parsed,
@@ -248,8 +248,9 @@ class BookingFetcher:
         all_bookings = [booking for result in results for booking in result]
         self.all_bookings = all_bookings
         print(f"\n{get_timestamp()} === Overall Fetch Summary ===")
-        for account_name, result in self.fetch_summary.items():
-            print(f"{get_timestamp()}   - {account_name}: {result}")
+        for account in self.accounts:
+            result = self.fetch_summary.get(account['name'], "Not Processed")
+            print(f"{get_timestamp()}   - {account['name']}: {result}")
         print(f"{get_timestamp()} ✅ Total upcoming bookings fetched across all accounts: {len(self.all_bookings)}")
         return self.all_bookings
 
@@ -264,6 +265,8 @@ class BookingFetcher:
 
     async def update_google_sheet(self, bookings: List[Dict[str, str]]):
         """Update the Google Sheet with booking data."""
+        if not self.sheets_manager:
+            return
         try:
             print(f"\n{get_timestamp()} === Updating Google Sheet with {len(bookings)} bookings ===")
             sorted_bookings = self._sort_bookings(bookings)
@@ -271,14 +274,24 @@ class BookingFetcher:
             try:
                 worksheet = self.sheets_manager.spreadsheet.worksheet(worksheet_name)
             except:
-                worksheet = self.sheets_manager.spreadsheet.add_worksheet(title=worksheet_name, rows=1000, cols=10)
+                worksheet = self.sheets_manager.spreadsheet.add_worksheet(title=worksheet_name, rows=len(bookings) + 100, cols=10)
             
             worksheet.clear()
             headers = ['Email', 'Date Booking Made', 'Facility', 'Court Number', 'Date', 'Time']
             worksheet.update('A1', [headers])
 
             if sorted_bookings:
-                data_rows = [[b.get(h.replace(' ', ''), '') for h in headers] for b in sorted_bookings]
+                data_rows = []
+                for booking in sorted_bookings:
+                    row = [
+                        booking.get('Email', ''),
+                        booking.get('Date Booking Made', ''),
+                        booking.get('Facility', ''),
+                        booking.get('Court Number', ''),
+                        booking.get('Date', ''),
+                        booking.get('Time', '')
+                    ]
+                    data_rows.append(row)
                 worksheet.update('A2', data_rows)
 
             london_time = get_london_datetime()
@@ -341,8 +354,6 @@ class BookingFetcher:
         body += "</table></body></html>"
 
         try:
-            # This relies on a modified send_email that can handle html.
-            # Assuming the existing EmailManager is adapted or works this way.
             await self.email_manager.send_email(recipient=IT_EMAIL_ADDRESS, subject=subject, body=body)
             print(f"{get_timestamp()} ✅ Successfully sent summary email to {IT_EMAIL_ADDRESS}")
         except Exception as e:

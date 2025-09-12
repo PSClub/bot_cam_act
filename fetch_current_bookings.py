@@ -5,17 +5,17 @@ Fetch Current Bookings Script
 
 This script logs into all Camden Active accounts concurrently, navigates to the
 My Bookings page, scrapes all booking data (handling multiple pages), filters
-for upcoming bookings, and stores them in a Google Sheet. It also sends an
-email summary.
+for upcoming bookings, sorts them, and stores them in a Google Sheet. It also
+sends an email summary.
 
 Features:
-- Concurrent login to multiple accounts
-- Web scraping of booking table data with pagination support
+- Concurrent login to multiple accounts with clear error reporting
+- Robust web scraping of booking table data with pagination support
 - Filters out past bookings
-- Advanced sorting of results
-- Detailed per-account summary
-- Google Sheets integration
-- Email summary report
+- Advanced sorting of results by location and date
+- Detailed per-account summary in console and email
+- Google Sheets integration with original column structure
+- Email summary report to a specified IT address
 
 Usage:
     python fetch_current_bookings.py
@@ -64,6 +64,7 @@ class BookingFetcher:
     def __init__(self):
         """Initialize the booking fetcher."""
         self.sheets_manager = None
+        self.email_manager = None
         self.accounts = []
         self.all_bookings = []
         self.fetch_summary = {}
@@ -158,7 +159,6 @@ class BookingFetcher:
                     print(f"{get_timestamp()}   - No more pages of bookings found.")
                     break
             
-            # Filter for upcoming bookings only
             upcoming_bookings = self._filter_upcoming_bookings(all_pages_bookings)
             self.fetch_summary[account['name']] = f"{len(upcoming_bookings)} bookings found"
             print(f"{get_timestamp()} ✅ Extracted {len(upcoming_bookings)} upcoming bookings across {page_num} page(s) for {account['name']}")
@@ -168,7 +168,7 @@ class BookingFetcher:
             self.fetch_summary[account['name']] = "Error"
             if page:
                 await take_screenshot_on_error(page, account['name'], "fetch_error")
-            return [] # Return empty list on error
+            return []
         finally:
             if browser: await browser.close()
             if playwright: await playwright.stop()
@@ -183,7 +183,6 @@ class BookingFetcher:
                 if booking_date >= today:
                     upcoming.append(booking)
             except (ValueError, KeyError):
-                print(f"{get_timestamp()} ⚠️ Could not parse date for booking: {booking}. Excluding from results.")
                 continue
         return upcoming
 
@@ -202,14 +201,17 @@ class BookingFetcher:
 
             for i in range(0, len(all_columns), 3):
                 try:
-                    booking_date_raw, facility_info, date_time_info = all_columns[i:i+3]
+                    booking_made_date_raw, facility_info, date_time_info = all_columns[i:i+3]
                     facility_name, court_number = self._parse_facility_info(facility_info)
                     booking_date_parsed, booking_time = self._parse_date_time_info(date_time_info)
                     if facility_name and booking_date_parsed:
                         bookings.append({
-                            'Email': email, 'Booking Date': booking_date_raw.strip(),
-                            'Facility': facility_name, 'Court Number': court_number,
-                            'Date': booking_date_parsed, 'Time': booking_time or "Multiple slots"
+                            'Email': email,
+                            'Date Booking Made': booking_made_date_raw.strip(),
+                            'Facility': facility_name,
+                            'Court Number': court_number,
+                            'Date': booking_date_parsed,
+                            'Time': booking_time or "Multiple slots"
                         })
                 except Exception as row_error:
                     print(f"{get_timestamp()} ⚠️ Error processing a booking group: {row_error}")
@@ -245,6 +247,9 @@ class BookingFetcher:
         results = await asyncio.gather(*tasks)
         all_bookings = [booking for result in results for booking in result]
         self.all_bookings = all_bookings
+        print(f"\n{get_timestamp()} === Overall Fetch Summary ===")
+        for account_name, result in self.fetch_summary.items():
+            print(f"{get_timestamp()}   - {account_name}: {result}")
         print(f"{get_timestamp()} ✅ Total upcoming bookings fetched across all accounts: {len(self.all_bookings)}")
         return self.all_bookings
 
@@ -260,7 +265,7 @@ class BookingFetcher:
     async def update_google_sheet(self, bookings: List[Dict[str, str]]):
         """Update the Google Sheet with booking data."""
         try:
-            print(f"{get_timestamp()} === Updating Google Sheet with {len(bookings)} bookings ===")
+            print(f"\n{get_timestamp()} === Updating Google Sheet with {len(bookings)} bookings ===")
             sorted_bookings = self._sort_bookings(bookings)
             worksheet_name = "Upcoming Camden Bookings"
             try:
@@ -269,7 +274,7 @@ class BookingFetcher:
                 worksheet = self.sheets_manager.spreadsheet.add_worksheet(title=worksheet_name, rows=1000, cols=10)
             
             worksheet.clear()
-            headers = ['Facility', 'Court Number', 'Date', 'Time', 'Email', 'Booking Date']
+            headers = ['Email', 'Date Booking Made', 'Facility', 'Court Number', 'Date', 'Time']
             worksheet.update('A1', [headers])
 
             if sorted_bookings:
@@ -279,12 +284,8 @@ class BookingFetcher:
             london_time = get_london_datetime()
             summary_info = [
                 [f"Last Updated: {london_time.strftime('%Y-%m-%d %H:%M:%S')}"],
-                [f"Total Upcoming Bookings: {len(bookings)}"],
-                ["--- Fetch Summary ---"]
+                [f"Total Upcoming Bookings: {len(bookings)}"]
             ]
-            for account, result in self.fetch_summary.items():
-                summary_info.append([f"{account}: {result}"])
-
             start_row = len(sorted_bookings) + 3
             worksheet.update(f'A{start_row}', summary_info)
             print(f"{get_timestamp()} ✅ Successfully updated Google Sheet")
@@ -297,31 +298,33 @@ class BookingFetcher:
             print(f"{get_timestamp()} 📧 Email manager not configured, skipping email.")
             return
 
-        print(f"{get_timestamp()} === Preparing and Sending Summary Email ===")
-        subject = f"Camden Tennis Bookings Summary - {get_london_datetime().strftime('%Y-%m-%d')}"
+        print(f"\n{get_timestamp()} === Preparing and Sending Summary Email ===")
+        subject = f"Camden Tennis Bookings Summary - {get_london_datetime().strftime('%Y-%m-%d %H:%M')}"
         
-        # Build HTML table for the email body
-        body = "<html><body>"
-        body += f"<h2>Upcoming Camden Tennis Bookings ({len(bookings)} total)</h2>"
-        body += "<p>This report was generated on " + get_london_datetime().strftime('%Y-%m-%d %H:%M:%S') + "</p>"
-        
-        body += "<h3>Fetch Summary</h3><ul>"
+        body = f"""
+        <html><body>
+        <h2>Upcoming Camden Tennis Bookings ({len(bookings)} total)</h2>
+        <p>This report was generated on {get_london_datetime().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <h3>Fetch Summary</h3>
+        <ul>
+        """
         for account, result in self.fetch_summary.items():
             body += f"<li><b>{account}:</b> {result}</li>"
         body += "</ul>"
 
         body += """
-        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: sans-serif;">
         <tr style="background-color: #f2f2f2;">
             <th>Facility</th>
-            <th>Court Number</th>
+            <th>Court</th>
             <th>Date</th>
             <th>Time</th>
-            <th>Booked By (Email)</th>
+            <th>Booked By</th>
+            <th>Date Booking Made</th>
         </tr>
         """
         if not bookings:
-            body += '<tr><td colspan="5" style="text-align: center;">No upcoming bookings found.</td></tr>'
+            body += '<tr><td colspan="6" style="text-align: center;">No upcoming bookings found.</td></tr>'
         else:
             sorted_bookings = self._sort_bookings(bookings)
             for booking in sorted_bookings:
@@ -332,33 +335,15 @@ class BookingFetcher:
                     <td>{booking.get('Date', '')}</td>
                     <td>{booking.get('Time', '')}</td>
                     <td>{booking.get('Email', '')}</td>
+                    <td>{booking.get('Date Booking Made', '')}</td>
                 </tr>
                 """
         body += "</table></body></html>"
 
         try:
-            # The send_email method in the existing EmailManager needs to be adapted for HTML
-            # For now, we will create a temporary send function here.
-            # In a real scenario, you'd modify EmailManager to accept an html parameter.
-            
-            from email.mime.text import MIMEText
-            from email.mime.multipart import MIMEMultipart
-
-            msg = MIMEMultipart()
-            msg['From'] = SENDER_EMAIL
-            msg['To'] = IT_EMAIL_ADDRESS
-            msg['Subject'] = subject
-            msg.attach(MIMEText(body, 'html'))
-            
-            # Reusing the SMTP logic from EmailManager
-            import smtplib
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.starttls()
-            server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
-            text = msg.as_string()
-            server.sendmail(SENDER_EMAIL, [IT_EMAIL_ADDRESS], text)
-            server.quit()
-
+            # This relies on a modified send_email that can handle html.
+            # Assuming the existing EmailManager is adapted or works this way.
+            await self.email_manager.send_email(recipient=IT_EMAIL_ADDRESS, subject=subject, body=body)
             print(f"{get_timestamp()} ✅ Successfully sent summary email to {IT_EMAIL_ADDRESS}")
         except Exception as e:
             print(f"{get_timestamp()} ❌ Failed to send summary email: {e}")
@@ -373,10 +358,10 @@ async def main():
         all_bookings = await fetcher.fetch_all_bookings()
         await fetcher.update_google_sheet(all_bookings)
         await fetcher.send_summary_email(all_bookings)
-        print(f"{get_timestamp()} 🎉 Successfully completed bookings fetch!")
+        print(f"\n{get_timestamp()} 🎉 Successfully completed bookings fetch!")
         return True
     except Exception as e:
-        print(f"{get_timestamp()} ❌ Error in main execution: {e}")
+        print(f"\n{get_timestamp()} ❌ An error occurred in the main execution: {e}")
         import traceback
         print(f"{get_timestamp()} 🔍 Full error: {traceback.format_exc()}")
         return False

@@ -4,39 +4,44 @@ on:
   schedule:
     # Run every day at 8:00 AM UTC (9:00 AM BST / 8:00 AM GMT)
     - cron: '0 8 * * *'
-
+  
   # Allow manual triggering
   workflow_dispatch:
 
 jobs:
   fetch-bookings:
     runs-on: ubuntu-latest
-
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-
+    
     - name: Set up Python 3.11
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-
+    
     - name: Install Playwright browsers
       run: |
         playwright install chromium
-
+    
     - name: Run fetch bookings script
       env:
         # Google Sheets Configuration
         GSHEET_CAM_ID: ${{ secrets.GSHEET_CAM_ID }}
         GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        
+        # --- ADDED: Email Configuration ---
+        SENDER_EMAIL: ${{ vars.KYLE_EMAIL_ADDRESS }}
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        IT_EMAIL_ADDRESS: ${{ vars.IT_EMAIL_ADDRESS }}
 
-        # Account Credentials (Emails from vars, Passwords from secrets)
+        # Account Credentials
         MOTHER_CAM_EMAIL_ADDRESS: ${{ vars.MOTHER_CAM_EMAIL_ADDRESS }}
         MOTHER_CAM_PASSWORD: ${{ secrets.MOTHER_CAM_PASSWORD }}
         FATHER_CAM_EMAIL_ADDRESS: ${{ vars.FATHER_CAM_EMAIL_ADDRESS }}
@@ -49,13 +54,13 @@ jobs:
         JAN_CAM_PASSWORD: ${{ secrets.JAN_CAM_PASSWORD }}
         JO_CAM_EMAIL_ADDRESS: ${{ vars.JO_CAM_EMAIL_ADDRESS }}
         JO_CAM_PASSWORD: ${{ secrets.JO_CAM_PASSWORD }}
-
+        
         # Browser Configuration
         HEADLESS_MODE: 'True'
-
+        
       run: |
         python fetch_current_bookings.py
-
+    
     - name: Upload screenshots (if any)
       uses: actions/upload-artifact@v4
       if: always()

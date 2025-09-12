@@ -4,12 +4,12 @@ Fetch Current Bookings Script
 ============================
 
 This script logs into all Camden Active accounts concurrently, navigates to the
-My Bookings page, scrapes all booking data, and stores it in a Google Sheet
-called "Upcoming Camden Bookings".
+My Bookings page, scrapes all booking data (handling multiple pages), and
+stores it in a Google Sheet called "Upcoming Camden Bookings".
 
 Features:
 - Concurrent login to multiple accounts
-- Web scraping of booking table data
+- Web scraping of booking table data with pagination support
 - Google Sheets integration with automatic sheet creation
 - Data sorting by booking date (most recent first)
 - Cron job compatible
@@ -33,7 +33,7 @@ import os
 import json
 from datetime import datetime
 from playwright.async_api import async_playwright, Page
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 # Import existing modules
 from config import (
@@ -71,8 +71,6 @@ class BookingFetcher:
         self.sheets_manager = None
         self.accounts = []
         self.all_bookings = []
-
-        # Set up accounts configuration
         self._setup_accounts()
 
     def _setup_accounts(self):
@@ -85,14 +83,12 @@ class BookingFetcher:
             ("Jan", JAN_EMAIL, JAN_PASSWORD),
             ("Jo", JO_EMAIL, JO_PASSWORD)
         ]
-
         for name, email, password in account_configs:
             if email and password:
                 self.accounts.append({'name': name, 'email': email, 'password': password})
                 print(f"{get_timestamp()} ✅ Added account: {name} ({email})")
             else:
                 print(f"{get_timestamp()} ⚠️ Skipping account {name}: missing credentials")
-
         print(f"{get_timestamp()} 📋 Configured {len(self.accounts)} accounts for booking fetch")
 
     async def initialize_sheets(self):
@@ -109,10 +105,9 @@ class BookingFetcher:
             return False
 
     async def fetch_account_bookings(self, account: Dict[str, str]) -> List[Dict[str, str]]:
-        """Fetch bookings for a single account."""
-        playwright = None
-        browser = None
-        page = None
+        """Fetch bookings for a single account, handling pagination."""
+        playwright = browser = page = None
+        all_pages_bookings = []
         try:
             print(f"{get_timestamp()} --- Fetching bookings for {account['name']} ({account['email']}) ---")
             playwright = await async_playwright().start()
@@ -122,9 +117,7 @@ class BookingFetcher:
             await page.goto(LOGIN_URL)
             try:
                 await page.locator("#rtPrivacyBannerAccept").click(timeout=5000)
-            except:
-                pass
-
+            except: pass
             await page.get_by_label("Email Address").fill(account['email'])
             await page.get_by_label("Password").fill(account['password'])
             await page.locator("a.button-primary:has-text('Log in')").click()
@@ -135,40 +128,45 @@ class BookingFetcher:
             await page.goto(my_bookings_url)
             print(f"{get_timestamp()} 📋 Navigated to My Bookings page for {account['name']}")
 
-            bookings = await self._extract_booking_data(page, account['email'])
-            print(f"{get_timestamp()} ✅ Extracted {len(bookings)} bookings for {account['name']}")
-            return bookings
-
+            page_num = 1
+            while True:
+                print(f"{get_timestamp()}   - Scraping page {page_num} for {account['name']}...")
+                current_page_bookings = await self._extract_booking_data(page, account['email'])
+                if current_page_bookings:
+                    all_pages_bookings.extend(current_page_bookings)
+                
+                next_button = page.locator('a.button-primary:has-text("Next")')
+                if await next_button.is_visible() and await next_button.is_enabled():
+                    print(f"{get_timestamp()}   - Next button found, navigating to page {page_num + 1}...")
+                    await next_button.click()
+                    await page.wait_for_load_state("domcontentloaded", timeout=20000)
+                    page_num += 1
+                else:
+                    print(f"{get_timestamp()}   - No more pages of bookings found.")
+                    break
+            
+            print(f"{get_timestamp()} ✅ Extracted {len(all_pages_bookings)} bookings across {page_num} page(s) for {account['name']}")
+            return all_pages_bookings
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error fetching bookings for {account['name']}: {e}")
             if page:
                 await take_screenshot_on_error(page, account['name'], "fetch_error")
-            return []
+            return all_pages_bookings # Return whatever was fetched before the error
         finally:
-            if browser:
-                await browser.close()
-            if playwright:
-                await playwright.stop()
+            if browser: await browser.close()
+            if playwright: await playwright.stop()
 
     async def _extract_booking_data(self, page: Page, email: str) -> List[Dict[str, str]]:
-        """Extract booking data from the My Bookings page."""
+        """Extract booking data from the current page."""
         try:
-            await page.wait_for_load_state("domcontentloaded", timeout=20000)
+            content_locator = page.locator("div.wrapper.row-group, text='You are not booked onto any courses or sessions.'")
+            await content_locator.first.wait_for(state="visible", timeout=20000)
 
-            no_bookings_locator = page.locator("text='You are not booked onto any courses or sessions.'")
-            bookings_exist_locator = page.locator("div.wrapper.row-group")
-
-            # Wait for either the "no bookings" message OR the booking rows to appear
-            await asyncio.wait([
-                no_bookings_locator.wait_for(state="visible", timeout=20000),
-                bookings_exist_locator.first.wait_for(state="visible", timeout=20000)
-            ], return_when=asyncio.FIRST_COMPLETED)
-
-            if await no_bookings_locator.is_visible():
-                print(f"{get_timestamp()} ℹ️ No upcoming bookings found for {email}")
+            if await page.locator("text='You are not booked onto any courses or sessions.'").is_visible():
+                print(f"{get_timestamp()}   - ℹ️ No upcoming bookings found on this page for {email}")
                 return []
-
-            booking_rows = await bookings_exist_locator.all()
+            
+            booking_rows = await page.locator("div.wrapper.row-group").all()
             bookings = []
             for row in booking_rows:
                 try:
@@ -186,7 +184,7 @@ class BookingFetcher:
                                 'Date': booking_date_parsed, 'Time': booking_time
                             })
                 except Exception as row_error:
-                    print(f"{get_timestamp()} ⚠️ Error processing booking row: {row_error}")
+                    print(f"{get_timestamp()} ⚠️ Error processing a booking row: {row_error}")
             return bookings
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error during data extraction for {email}: {e}")
@@ -210,24 +208,23 @@ class BookingFetcher:
         import re
         date_match = re.search(r'(\d{1,2}/\d{1,2}/\d{4})', date_time_info)
         time_match = re.search(r'(\d{1,2}:\d{2})', date_time_info)
-        return date_match.group(1) if date_match else "", time_match.group(1) if time_match else ""
+        return (date_match.group(1) if date_match else "", time_match.group(1) if time_match else "")
 
     async def fetch_all_bookings(self) -> List[Dict[str, str]]:
         """Fetch bookings from all accounts concurrently."""
         print(f"{get_timestamp()} === Starting concurrent booking fetch for {len(self.accounts)} accounts ===")
         tasks = [self.fetch_account_bookings(account) for account in self.accounts]
-        results = await asyncio.gather(*tasks, return_exceptions=False)
-        all_bookings = [booking for result in results if result for booking in result]
+        results = await asyncio.gather(*tasks)
+        all_bookings = [booking for result in results for booking in result]
         self.all_bookings = all_bookings
-        print(f"{get_timestamp()} ✅ Total bookings fetched: {len(self.all_bookings)}")
+        print(f"{get_timestamp()} ✅ Total bookings fetched across all accounts: {len(self.all_bookings)}")
         return self.all_bookings
 
     def _sort_bookings_by_date(self, bookings: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """Sort bookings by date (most recent first)."""
         try:
             return sorted(bookings, key=lambda b: datetime.strptime(b.get('Date', '01/01/1970'), '%d/%m/%Y'), reverse=True)
-        except Exception as e:
-            print(f"{get_timestamp()} ⚠️ Error sorting bookings: {e}")
+        except:
             return bookings
 
     async def update_google_sheet(self, bookings: List[Dict[str, str]]):
@@ -243,11 +240,20 @@ class BookingFetcher:
             
             worksheet.clear()
             headers = ['Email', 'Booking Date', 'Facility', 'Court Number', 'Date', 'Time']
-            worksheet.update(values=[headers], range_name='A1')
+            worksheet.update([headers], 'A1')
 
             if sorted_bookings:
-                data_rows = [[b.get(h.replace(' ', ''), '') for h in headers] for b in sorted_bookings]
-                worksheet.update(values=data_rows, range_name='A2')
+                data_rows = [
+                    [
+                        booking.get('Email', ''),
+                        booking.get('Booking Date', ''),
+                        booking.get('Facility', ''),
+                        booking.get('Court Number', ''),
+                        booking.get('Date', ''),
+                        booking.get('Time', '')
+                    ] for booking in sorted_bookings
+                ]
+                worksheet.update(data_rows, 'A2')
 
             london_time = get_london_datetime()
             summary_info = [
@@ -256,7 +262,7 @@ class BookingFetcher:
                 [f"Accounts Checked: {len(self.accounts)}"]
             ]
             start_row = len(sorted_bookings) + 3
-            worksheet.update(values=summary_info, range_name=f'A{start_row}')
+            worksheet.update(summary_info, f'A{start_row}')
             print(f"{get_timestamp()} ✅ Successfully updated Google Sheet")
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error updating Google Sheet: {e}")
@@ -267,8 +273,7 @@ async def main():
         print(f"{get_timestamp()} 🎾 Starting Camden Active Bookings Fetch")
         print(f"{get_timestamp()} ===============================================")
         fetcher = BookingFetcher()
-        if not await fetcher.initialize_sheets():
-            return False
+        if not await fetcher.initialize_sheets(): return False
         all_bookings = await fetcher.fetch_all_bookings()
         await fetcher.update_google_sheet(all_bookings)
         print(f"{get_timestamp()} 🎉 Successfully completed bookings fetch!")

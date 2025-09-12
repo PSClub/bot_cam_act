@@ -7,18 +7,6 @@ This script logs into all Camden Active accounts concurrently, navigates to the
 My Bookings page, scrapes all booking data (handling multiple pages), filters
 for upcoming bookings, sorts them, and stores them in a Google Sheet. It also
 sends an email summary.
-
-Features:
-- Concurrent login to multiple accounts with clear error reporting
-- Robust web scraping of booking table data with pagination support
-- Filters out past bookings
-- Advanced sorting of results by location and date
-- Detailed per-account summary in console and email
-- Google Sheets integration with original column structure
-- Email summary report to a specified IT address
-
-Usage:
-    python fetch_current_bookings.py
 """
 
 import asyncio
@@ -83,7 +71,6 @@ class BookingFetcher:
         for name, email, password in account_configs:
             if email and password:
                 self.accounts.append({'name': name, 'email': email, 'password': password})
-                print(f"{get_timestamp()} ✅ Added account: {name} ({email})")
             else:
                 print(f"{get_timestamp()} ⚠️ Skipping account {name}: missing credentials")
         print(f"{get_timestamp()} 📋 Configured {len(self.accounts)} accounts for booking fetch")
@@ -103,7 +90,6 @@ class BookingFetcher:
             else:
                 self.email_manager = EmailManager(SENDER_EMAIL, GMAIL_APP_PASSWORD)
                 print(f"{get_timestamp()} ✅ Email manager initialized")
-
             return True
         except Exception as e:
             print(f"{get_timestamp()} ❌ Failed to initialize external systems: {e}")
@@ -131,9 +117,7 @@ class BookingFetcher:
                 await page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
                 print(f"{get_timestamp()} ✅ {account['name']} logged in successfully")
             except PlaywrightTimeoutError:
-                print(f"                                   ")
-                print(f"{get_timestamp()} ❌ LOGIN FAILED for {account['name']}. Please verify credentials in GitHub.")
-                print(f"                                   ")
+                print(f"\n{get_timestamp()} ❌ LOGIN FAILED for {account['name']}. Please verify credentials in GitHub.\n")
                 await take_screenshot_on_error(page, account['name'], "login_failed")
                 self.fetch_summary[account['name']] = "Login Failed"
                 return []
@@ -265,8 +249,7 @@ class BookingFetcher:
 
     async def update_google_sheet(self, bookings: List[Dict[str, str]]):
         """Update the Google Sheet with booking data."""
-        if not self.sheets_manager:
-            return
+        if not self.sheets_manager: return
         try:
             print(f"\n{get_timestamp()} === Updating Google Sheet with {len(bookings)} bookings ===")
             sorted_bookings = self._sort_bookings(bookings)
@@ -283,14 +266,7 @@ class BookingFetcher:
             if sorted_bookings:
                 data_rows = []
                 for booking in sorted_bookings:
-                    row = [
-                        booking.get('Email', ''),
-                        booking.get('Date Booking Made', ''),
-                        booking.get('Facility', ''),
-                        booking.get('Court Number', ''),
-                        booking.get('Date', ''),
-                        booking.get('Time', '')
-                    ]
+                    row = [booking.get(key, '') for key in ['Email', 'Date Booking Made', 'Facility', 'Court Number', 'Date', 'Time']]
                     data_rows.append(row)
                 worksheet.update('A2', data_rows)
 
@@ -354,7 +330,7 @@ class BookingFetcher:
         body += "</table></body></html>"
 
         try:
-            await self.email_manager.send_email(recipient=IT_EMAIL_ADDRESS, subject=subject, body=body)
+            await self.email_manager.send_email(recipient=IT_EMAIL_ADDRESS, subject=subject, body=body, is_html=True)
             print(f"{get_timestamp()} ✅ Successfully sent summary email to {IT_EMAIL_ADDRESS}")
         except Exception as e:
             print(f"{get_timestamp()} ❌ Failed to send summary email: {e}")

@@ -152,7 +152,7 @@ class BookingFetcher:
             print(f"{get_timestamp()} 📋 Navigated to My Bookings page for {account['name']}")
             
             # Wait for the booking table to load
-            await page.wait_for_selector("div.wrapper.row-group", timeout=10000)
+            await page.wait_for_selector("div.wrapper.row-group", timeout=20000)
             
             # Extract booking data from the table
             bookings = await self._extract_booking_data(page, account['email'])
@@ -186,8 +186,14 @@ class BookingFetcher:
         
         try:
             # Wait for page to fully load
-            await page.wait_for_load_state("networkidle", timeout=10000)
+            await page.wait_for_load_state("networkidle", timeout=15000)
             
+            # Check if a "no bookings" message is present
+            no_bookings_locator = page.locator("text='You have no upcoming bookings'")
+            if await no_bookings_locator.is_visible(timeout=2000):
+                print(f"{get_timestamp()} ℹ️ No upcoming bookings found for {email}")
+                return bookings
+
             # Corrected selector for div-based rows
             booking_rows = await page.locator("div.wrapper.row-group").all()
             
@@ -369,7 +375,7 @@ class BookingFetcher:
             
             # Set up headers
             headers = ['Email', 'Booking Date', 'Facility', 'Court Number', 'Date', 'Time']
-            worksheet.update(range_name='A1', values=[headers])
+            worksheet.update(values=[headers], range_name='A1')
             
             # Prepare data rows
             data_rows = []
@@ -386,7 +392,7 @@ class BookingFetcher:
             
             # Update the sheet with all data at once
             if data_rows:
-                worksheet.update(range_name='A2', values=data_rows)
+                worksheet.update(values=data_rows, range_name='A2')
             
             # Add timestamp and summary
             london_time = get_london_datetime()
@@ -397,7 +403,7 @@ class BookingFetcher:
             ]
             
             start_row = len(data_rows) + 3
-            worksheet.update(range_name=f'A{start_row}', values=summary_info)
+            worksheet.update(values=summary_info, range_name=f'A{start_row}')
             
             print(f"{get_timestamp()} ✅ Successfully updated Google Sheet with {len(bookings)} bookings")
             

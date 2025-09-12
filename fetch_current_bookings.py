@@ -32,7 +32,7 @@ import asyncio
 import os
 import json
 from datetime import datetime
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
 from typing import List, Dict
 
 # Import existing modules
@@ -121,8 +121,14 @@ class BookingFetcher:
             await page.get_by_label("Email Address").fill(account['email'])
             await page.get_by_label("Password").fill(account['password'])
             await page.locator("a.button-primary:has-text('Log in')").click()
-            await page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
-            print(f"{get_timestamp()} ✅ {account['name']} logged in successfully")
+            
+            try:
+                await page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
+                print(f"{get_timestamp()} ✅ {account['name']} logged in successfully")
+            except PlaywrightTimeoutError:
+                print(f"{get_timestamp()} ❌ Login failed for {account['name']}. Please check credentials.")
+                await take_screenshot_on_error(page, account['name'], "login_failed")
+                return []
 
             my_bookings_url = "https://camdenactive.camden.gov.uk/dashboards/my-bookings/"
             await page.goto(my_bookings_url)
@@ -151,7 +157,7 @@ class BookingFetcher:
             print(f"{get_timestamp()} ❌ Error fetching bookings for {account['name']}: {e}")
             if page:
                 await take_screenshot_on_error(page, account['name'], "fetch_error")
-            return all_pages_bookings # Return whatever was fetched before the error
+            return all_pages_bookings
         finally:
             if browser: await browser.close()
             if playwright: await playwright.stop()
@@ -159,15 +165,13 @@ class BookingFetcher:
     async def _extract_booking_data(self, page: Page, email: str) -> List[Dict[str, str]]:
         """Extract booking data from the current page."""
         try:
-            # Wait for the main content area to load to avoid race conditions
-            await page.locator("#ctl00_PageContent_repBookings_ctl01_pnlPager").wait_for(state="visible", timeout=20000)
+            # Wait for either the "no bookings" message OR the booking rows to appear
+            await page.wait_for_selector("div.wrapper.row-group, text='You are not booked onto any courses or sessions.'", state="visible", timeout=20000)
 
-            # Check for the "no bookings" message first
             if await page.locator("text='You are not booked onto any courses or sessions.'").is_visible():
                 print(f"{get_timestamp()}   - ℹ️ No upcoming bookings found on this page for {email}")
                 return []
             
-            # If no "no bookings" message, then the booking rows should exist
             booking_rows = await page.locator("div.wrapper.row-group").all()
             bookings = []
             for row in booking_rows:
@@ -242,7 +246,7 @@ class BookingFetcher:
             
             worksheet.clear()
             headers = ['Email', 'Booking Date', 'Facility', 'Court Number', 'Date', 'Time']
-            worksheet.update('A1', [headers])
+            worksheet.update(values=[headers], range_name='A1')
 
             if sorted_bookings:
                 data_rows = [
@@ -255,7 +259,7 @@ class BookingFetcher:
                         booking.get('Time', '')
                     ] for booking in sorted_bookings
                 ]
-                worksheet.update('A2', data_rows)
+                worksheet.update(values=data_rows, range_name='A2')
 
             london_time = get_london_datetime()
             summary_info = [
@@ -264,7 +268,7 @@ class BookingFetcher:
                 [f"Accounts Checked: {len(self.accounts)}"]
             ]
             start_row = len(sorted_bookings) + 3
-            worksheet.update(f'A{start_row}', summary_info)
+            worksheet.update(values=summary_info, range_name=f'A{start_row}')
             print(f"{get_timestamp()} ✅ Successfully updated Google Sheet")
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error updating Google Sheet: {e}")

@@ -159,13 +159,15 @@ class BookingFetcher:
     async def _extract_booking_data(self, page: Page, email: str) -> List[Dict[str, str]]:
         """Extract booking data from the current page."""
         try:
-            content_locator = page.locator("div.wrapper.row-group, text='You are not booked onto any courses or sessions.'")
-            await content_locator.first.wait_for(state="visible", timeout=20000)
+            # Wait for the main content area to load to avoid race conditions
+            await page.locator("#ctl00_PageContent_repBookings_ctl01_pnlPager").wait_for(state="visible", timeout=20000)
 
+            # Check for the "no bookings" message first
             if await page.locator("text='You are not booked onto any courses or sessions.'").is_visible():
                 print(f"{get_timestamp()}   - ℹ️ No upcoming bookings found on this page for {email}")
                 return []
             
+            # If no "no bookings" message, then the booking rows should exist
             booking_rows = await page.locator("div.wrapper.row-group").all()
             bookings = []
             for row in booking_rows:
@@ -240,7 +242,7 @@ class BookingFetcher:
             
             worksheet.clear()
             headers = ['Email', 'Booking Date', 'Facility', 'Court Number', 'Date', 'Time']
-            worksheet.update([headers], 'A1')
+            worksheet.update('A1', [headers])
 
             if sorted_bookings:
                 data_rows = [
@@ -253,7 +255,7 @@ class BookingFetcher:
                         booking.get('Time', '')
                     ] for booking in sorted_bookings
                 ]
-                worksheet.update(data_rows, 'A2')
+                worksheet.update('A2', data_rows)
 
             london_time = get_london_datetime()
             summary_info = [
@@ -262,7 +264,7 @@ class BookingFetcher:
                 [f"Accounts Checked: {len(self.accounts)}"]
             ]
             start_row = len(sorted_bookings) + 3
-            worksheet.update(summary_info, f'A{start_row}')
+            worksheet.update(f'A{start_row}', summary_info)
             print(f"{get_timestamp()} ✅ Successfully updated Google Sheet")
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error updating Google Sheet: {e}")

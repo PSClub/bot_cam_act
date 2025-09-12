@@ -16,16 +16,6 @@ Features:
 
 Usage:
     python fetch_current_bookings.py
-
-Environment Variables Required:
-    - GSHEET_CAM_ID: Google Sheets ID for the main spreadsheet
-    - GOOGLE_SERVICE_ACCOUNT_JSON: Service account credentials
-    - MOTHER_CAM_EMAIL_ADDRESS, MOTHER_CAM_PASSWORD
-    - FATHER_CAM_EMAIL_ADDRESS, FATHER_CAM_PASSWORD
-    - BRUCE_CAM_EMAIL_ADDRESS, BRUCE_CAM_PASSWORD
-    - SALLIE_CAM_EMAIL_ADDRESS, SALLIE_CAM_PASSWORD
-    - JAN_CAM_EMAIL_ADDRESS, JAN_CAM_PASSWORD
-    - JO_CAM_EMAIL_ADDRESS, JO_CAM_PASSWORD
 """
 
 import asyncio
@@ -126,7 +116,9 @@ class BookingFetcher:
                 await page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
                 print(f"{get_timestamp()} ✅ {account['name']} logged in successfully")
             except PlaywrightTimeoutError:
-                print(f"{get_timestamp()} ❌ Login failed for {account['name']}. Please check credentials.")
+                print(f"                                   ")
+                print(f"{get_timestamp()} ❌ LOGIN FAILED for {account['name']}. Please verify credentials in GitHub.")
+                print(f"                                   ")
                 await take_screenshot_on_error(page, account['name'], "login_failed")
                 return []
 
@@ -142,10 +134,10 @@ class BookingFetcher:
                     all_pages_bookings.extend(current_page_bookings)
                 
                 next_button = page.locator('a.button-primary:has-text("Next")')
-                if await next_button.is_visible() and await next_button.is_enabled():
+                if await next_button.is_visible(timeout=3000) and await next_button.is_enabled():
                     print(f"{get_timestamp()}   - Next button found, navigating to page {page_num + 1}...")
                     await next_button.click()
-                    await page.wait_for_load_state("domcontentloaded", timeout=20000)
+                    await page.wait_for_load_state("networkidle", timeout=20000)
                     page_num += 1
                 else:
                     print(f"{get_timestamp()}   - No more pages of bookings found.")
@@ -154,7 +146,7 @@ class BookingFetcher:
             print(f"{get_timestamp()} ✅ Extracted {len(all_pages_bookings)} bookings across {page_num} page(s) for {account['name']}")
             return all_pages_bookings
         except Exception as e:
-            print(f"{get_timestamp()} ❌ Error fetching bookings for {account['name']}: {e}")
+            print(f"{get_timestamp()} ❌ Error during booking fetch for {account['name']}: {e}")
             if page:
                 await take_screenshot_on_error(page, account['name'], "fetch_error")
             return all_pages_bookings
@@ -163,36 +155,46 @@ class BookingFetcher:
             if playwright: await playwright.stop()
 
     async def _extract_booking_data(self, page: Page, email: str) -> List[Dict[str, str]]:
-        """Extract booking data from the current page."""
+        """Extract booking data from the current page using the corrected strategy."""
+        bookings = []
         try:
-            # Wait for the main content area to be stable
+            # Wait for the main content area to be stable and visible
             await page.locator("div.content-main").wait_for(state="visible", timeout=20000)
 
-            # Now, explicitly check if the "no bookings" message is visible
+            # Check for the "no bookings" message first
             if await page.locator("text='You are not booked onto any courses or sessions.'").is_visible():
                 print(f"{get_timestamp()}   - ℹ️ No upcoming bookings found on this page for {email}")
                 return []
             
-            # If the "no bookings" text is not visible, then the booking rows should be
-            booking_rows = await page.locator("div.wrapper.row-group").all()
-            bookings = []
-            for row in booking_rows:
+            # New Strategy: Get all column data points and group them
+            all_columns = await page.locator("div.booking-column").all()
+            
+            # Data appears in triplets: Booking Date, Course/Facility, Date(s)
+            if len(all_columns) % 3 != 0:
+                print(f"{get_timestamp()} ⚠️ Warning: Unexpected number of data columns ({len(all_columns)}). Scraping may be incomplete.")
+
+            for i in range(0, len(all_columns), 3):
                 try:
-                    columns = await row.locator("div.booking-column").all()
-                    if len(columns) >= 3:
-                        booking_date_raw = await columns[0].inner_text()
-                        facility_info = await columns[1].inner_text()
-                        date_time_info = await columns[2].inner_text()
-                        facility_name, court_number = self._parse_facility_info(facility_info)
-                        booking_date_parsed, booking_time = self._parse_date_time_info(date_time_info)
-                        if facility_name and booking_date_parsed:
-                            bookings.append({
-                                'Email': email, 'Booking Date': booking_date_raw.strip(),
-                                'Facility': facility_name, 'Court Number': court_number,
-                                'Date': booking_date_parsed, 'Time': booking_time
-                            })
+                    booking_date_raw = await all_columns[i].inner_text()
+                    facility_info = await all_columns[i+1].inner_text()
+                    date_time_info = await all_columns[i+2].inner_text()
+
+                    facility_name, court_number = self._parse_facility_info(facility_info)
+                    booking_date_parsed, booking_time = self._parse_date_time_info(date_time_info)
+
+                    if facility_name and booking_date_parsed:
+                        bookings.append({
+                            'Email': email, 'Booking Date': booking_date_raw.strip(),
+                            'Facility': facility_name, 'Court Number': court_number,
+                            'Date': booking_date_parsed, 'Time': booking_time
+                        })
+                except IndexError:
+                    # This can happen if the number of columns is not a multiple of 3
+                    print(f"{get_timestamp()}   - Could not process final data columns.")
+                    break
                 except Exception as row_error:
-                    print(f"{get_timestamp()} ⚠️ Error processing a booking row: {row_error}")
+                    print(f"{get_timestamp()} ⚠️ Error processing a booking group: {row_error}")
+            
             return bookings
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error during data extraction for {email}: {e}")
@@ -248,7 +250,7 @@ class BookingFetcher:
             
             worksheet.clear()
             headers = ['Email', 'Booking Date', 'Facility', 'Court Number', 'Date', 'Time']
-            worksheet.update(range_name='A1', values=[headers])
+            worksheet.update('A1', [headers])
 
             if sorted_bookings:
                 data_rows = [
@@ -261,7 +263,7 @@ class BookingFetcher:
                         booking.get('Time', '')
                     ] for booking in sorted_bookings
                 ]
-                worksheet.update(range_name='A2', values=data_rows)
+                worksheet.update('A2', data_rows)
 
             london_time = get_london_datetime()
             summary_info = [
@@ -270,7 +272,7 @@ class BookingFetcher:
                 [f"Accounts Checked: {len(self.accounts)}"]
             ]
             start_row = len(sorted_bookings) + 3
-            worksheet.update(range_name=f'A{start_row}', values=summary_info)
+            worksheet.update(f'A{start_row}', summary_info)
             print(f"{get_timestamp()} ✅ Successfully updated Google Sheet")
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error updating Google Sheet: {e}")

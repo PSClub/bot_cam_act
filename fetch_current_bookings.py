@@ -11,6 +11,9 @@ sends an email summary.
 
 import asyncio
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
 from typing import List, Dict, Tuple
@@ -24,7 +27,6 @@ from config import (
     SENDER_EMAIL, GMAIL_APP_PASSWORD, IT_EMAIL_ADDRESS, KYLE_EMAIL_ADDRESS, RECIPIENT_INFO
 )
 from sheets_manager import SheetsManager
-from email_manager import EmailManager
 from utils import get_timestamp, get_london_datetime
 
 
@@ -48,7 +50,6 @@ class BookingFetcher:
     def __init__(self):
         """Initialize the booking fetcher."""
         self.sheets_manager = None
-        self.email_manager = None
         self.accounts = []
         self.upcoming_bookings = []
         self.past_bookings = []
@@ -76,12 +77,7 @@ class BookingFetcher:
             self.sheets_manager = SheetsManager(GSHEET_MAIN_ID, GOOGLE_SERVICE_ACCOUNT_JSON)
             print(f"{get_timestamp()} ✅ Google Sheets manager initialized")
 
-            if not SENDER_EMAIL or not GMAIL_APP_PASSWORD or not any([RECIPIENT_INFO, KYLE_EMAIL_ADDRESS, IT_EMAIL_ADDRESS]):
-                print(f"{get_timestamp()} ⚠️ Email configuration missing (sender, password, or recipient), will skip sending email.")
-                self.email_manager = None
-            else:
-                self.email_manager = EmailManager(SENDER_EMAIL, GMAIL_APP_PASSWORD)
-                print(f"{get_timestamp()} ✅ Email manager initialized")
+            # Email configuration check is now done in the send_summary_email function
             return True
         except Exception as e:
             print(f"{get_timestamp()} ❌ Failed to initialize external systems: {e}")
@@ -261,8 +257,8 @@ class BookingFetcher:
 
     async def send_summary_email(self):
         """Sends an email with the summary of bookings."""
-        if not self.email_manager:
-            print(f"{get_timestamp()} 📧 Email manager not configured, skipping email.")
+        if not all([SENDER_EMAIL, GMAIL_APP_PASSWORD, any([IT_EMAIL_ADDRESS, KYLE_EMAIL_ADDRESS, RECIPIENT_INFO])]):
+            print(f"{get_timestamp()} 📧 Email configuration missing (sender, password, or recipient), skipping email.")
             return
 
         print(f"\n{get_timestamp()} === Preparing and Sending Summary Email ===")
@@ -293,11 +289,31 @@ class BookingFetcher:
         recipients = [rcpt for rcpt in [IT_EMAIL_ADDRESS, KYLE_EMAIL_ADDRESS, RECIPIENT_INFO] if rcpt]
         for recipient in recipients:
             try:
-                # Use the corrected EmailManager which now supports HTML
-                await self.email_manager.send_email(recipient=recipient, subject=subject, body=body, is_html=True)
+                # Using a self-contained email sending function to avoid conflicts
+                await self._send_html_email(recipient, subject, body)
             except Exception as e:
-                # The error will be logged by send_email, so we just note the failure here.
-                print(f"{get_timestamp()} ❌ Email sending failed for recipient {recipient}.")
+                print(f"{get_timestamp()} ❌ Email sending failed for recipient {recipient}: {e}")
+
+    async def _send_html_email(self, recipient, subject, html_body):
+        """A self-contained function to send HTML emails."""
+        server = None
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = SENDER_EMAIL
+            msg['To'] = recipient
+            msg['Subject'] = subject
+            msg.attach(MIMEText(html_body, 'html'))
+            
+            print(f"{get_timestamp()}     📧 SMTP: Connecting and sending to {recipient}...")
+            server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
+            server.starttls()
+            server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+            server.sendmail(SENDER_EMAIL, [recipient], msg.as_string())
+            print(f"{get_timestamp()}     ✅ SMTP: Email sent successfully to {recipient}")
+        finally:
+            if server:
+                server.quit()
+
 
 async def main():
     """Main function to fetch current bookings."""

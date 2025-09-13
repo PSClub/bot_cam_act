@@ -2,8 +2,8 @@ name: Fetch Current Camden Bookings
 
 on:
   schedule:
-    # Run every day at 8:00 AM UTC (9:00 AM BST / 8:00 AM GMT)
-    - cron: '0 8 * * *'
+    # Run every Monday morning
+    - cron: '15 6 * * 1'
   
   # Allow manual triggering
   workflow_dispatch:

@@ -28,7 +28,7 @@ jobs:
     
     - name: Install Playwright browsers
       run: |
-        playwright install chromium
+        playwright install chromium --with-deps
     
     - name: Run fetch bookings script
       env:
@@ -36,10 +36,12 @@ jobs:
         GSHEET_CAM_ID: ${{ secrets.GSHEET_CAM_ID }}
         GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         
-        # --- ADDED: Email Configuration ---
-        SENDER_EMAIL: ${{ vars.KYLE_EMAIL_ADDRESS }}
-        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        # --- CORRECTED: Email Configuration ---
+        # These names now match what config.py expects
+        KYLE_EMAIL_ADDRESS: ${{ vars.KYLE_EMAIL_ADDRESS }}
+        INFO_EMAIL_ADDRESS: ${{ vars.INFO_EMAIL_ADDRESS }}
         IT_EMAIL_ADDRESS: ${{ vars.IT_EMAIL_ADDRESS }}
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
 
         # Account Credentials
         MOTHER_CAM_EMAIL_ADDRESS: ${{ vars.MOTHER_CAM_EMAIL_ADDRESS }}

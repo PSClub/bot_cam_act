@@ -210,12 +210,13 @@ class BookingFetcher:
         print(f"{get_timestamp()} - Total past/invalid filtered: {len(self.past_bookings)}")
 
     def _sort_bookings(self, bookings: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """Sort bookings primarily by date (ascending)."""
+        """Sort bookings primarily by date (ascending, closest first)."""
         def sort_key(b):
             try:
+                # Use a far future date for entries that can't be parsed to push them to the end
                 date_obj = datetime.strptime(b.get('Date', '31/12/9999'), '%d/%m/%Y')
             except ValueError:
-                date_obj = datetime.strptime('31/12/9999', '%d/%m/%Y') # Push invalid dates to the end
+                date_obj = datetime.strptime('31/12/9999', '%d/%m/%Y')
             return (date_obj, b.get('Time', ''), b.get('Facility', ''), b.get('Court Number', ''))
         return sorted(bookings, key=sort_key)
 
@@ -225,23 +226,28 @@ class BookingFetcher:
         try:
             print(f"\n{get_timestamp()} === Updating '{sheet_name}' Sheet... ===")
             sorted_bookings = self._sort_bookings(bookings)
-            worksheet = self.sheets_manager.spreadsheet.worksheet(sheet_name)
+            
+            try:
+                worksheet = self.sheets_manager.spreadsheet.worksheet(sheet_name)
+            except:
+                worksheet = self.sheets_manager.spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=20)
+
             worksheet.clear()
             worksheet.update('A1', [headers])
 
             if sorted_bookings:
                 data_rows = [[booking.get(key, '') for key in headers] for booking in sorted_bookings]
                 worksheet.update('A2', data_rows)
+                
                 # Find the 'Date' column index to format it
                 try:
-                    date_col_index = headers.index('Date') + 1
-                    # Format the entire column as Date
+                    date_col_letter = chr(ord('A') + headers.index('Date'))
                     worksheet.format(
-                        f"{chr(ord('A') + date_col_index - 1)}2:{chr(ord('A') + date_col_index - 1)}",
+                        f"{date_col_letter}2:{date_col_letter}",
                         {"numberFormat": {"type": "DATE", "pattern": "dd/mm/yyyy"}}
                     )
                 except ValueError:
-                    print(f"{get_timestamp()} ⚠️ 'Date' column not found in headers for formatting.")
+                    print(f"{get_timestamp()} ⚠️ 'Date' column not in headers; skipping date formatting.")
 
             if sheet_name == "Upcoming Camden Bookings":
                 summary_info = [
@@ -261,21 +267,37 @@ class BookingFetcher:
 
         print(f"\n{get_timestamp()} === Preparing and Sending Summary Email ===")
         subject = f"Camden Tennis Bookings Summary - {get_london_datetime().strftime('%d-%m-%Y')}"
+        
+        # Sort bookings for the email body
+        sorted_for_email = self._sort_bookings(self.upcoming_bookings)
+
+        # Generate HTML table rows
+        table_rows = ""
+        if not sorted_for_email:
+            table_rows = '<tr><td colspan="6" style="text-align:center;">No upcoming bookings found.</td></tr>'
+        else:
+            for b in sorted_for_email:
+                table_rows += (f"<tr><td>{b.get('Facility','')}</td><td>{b.get('Court Number','')}</td>"
+                               f"<td>{b.get('Date','')}</td><td>{b.get('Time','')}</td>"
+                               f"<td>{b.get('Email','')}</td><td>{b.get('Date Booking Made','')}</td></tr>")
+
         body = f"""
         <html><body><h2>Upcoming Bookings ({len(self.upcoming_bookings)})</h2><p>Generated: {get_london_datetime().strftime('%Y-%m-%d %H:%M:%S')}</p>
         <h3>Fetch Summary</h3><ul>{''.join([f"<li><b>{acc}:</b> {res}</li>" for acc, res in self.fetch_summary.items()])}</ul>
         <p><b>{len(self.past_bookings)}</b> past/invalid bookings were filtered. See 'Filtered Out Bookings' sheet for details.</p>
-        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse;width:100%;">
-        <tr style="background-color:#f2f2f2;"><th>Facility</th><th>Court</th><th>Date</th><th>Time</th><th>Booked By</th><th>Date Booking Made</th></tr>
-        {''.join([f"<tr><td>{b.get('Facility','')}</td><td>{b.get('Court Number','')}</td><td>{b.get('Date','')}</td><td>{b.get('Time','')}</td><td>{b.get('Email','')}</td><td>{b.get('Date Booking Made','')}</td></tr>" for b in self._sort_bookings(self.upcoming_bookings)]) or '<tr><td colspan="6">No upcoming bookings found.</td></tr>'}
+        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse;width:100%;font-family:sans-serif;">
+        <tr style="background-color:#f2f2f2;"><th>Facility</th><th>Court Number</th><th>Date</th><th>Time</th><th>Email</th><th>Date Booking Made</th></tr>
+        {table_rows}
         </table></body></html>"""
         
         recipients = [rcpt for rcpt in [IT_EMAIL_ADDRESS, KYLE_EMAIL_ADDRESS, RECIPIENT_INFO] if rcpt]
         for recipient in recipients:
             try:
+                # Use the corrected EmailManager which now supports HTML
                 await self.email_manager.send_email(recipient=recipient, subject=subject, body=body, is_html=True)
             except Exception as e:
-                print(f"{get_timestamp()} ❌ Failed to send summary email to {recipient}: {e}")
+                # The error will be logged by send_email, so we just note the failure here.
+                print(f"{get_timestamp()} ❌ Email sending failed for recipient {recipient}.")
 
 async def main():
     """Main function to fetch current bookings."""
@@ -283,6 +305,7 @@ async def main():
     if not await fetcher.initialize_systems(): return
     await fetcher.fetch_all_bookings()
 
+    # Define new headers with corrected order
     upcoming_headers = ['Email', 'Facility', 'Court Number', 'Date', 'Time', 'Date Booking Made']
     await fetcher.update_google_sheet(fetcher.upcoming_bookings, "Upcoming Camden Bookings", upcoming_headers)
 

@@ -61,6 +61,7 @@ RECIPIENT_KYLE = os.environ.get("KYLE_EMAIL_ADDRESS")
 RECIPIENT_INFO = os.environ.get("INFO_EMAIL_ADDRESS")
 IT_EMAIL_ADDRESS = os.environ.get("IT_EMAIL_ADDRESS")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
+KYLE_EMAIL_ADDRESS = os.environ.get("KYLE_EMAIL_ADDRESS")
 
 # =============================================================================
 # --- FILE PATHS ---

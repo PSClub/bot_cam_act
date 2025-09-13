@@ -76,8 +76,6 @@ class BookingFetcher:
                 raise ValueError("Google Sheets configuration not set")
             self.sheets_manager = SheetsManager(GSHEET_MAIN_ID, GOOGLE_SERVICE_ACCOUNT_JSON)
             print(f"{get_timestamp()} ✅ Google Sheets manager initialized")
-
-            # Email configuration check is now done in the send_summary_email function
             return True
         except Exception as e:
             print(f"{get_timestamp()} ❌ Failed to initialize external systems: {e}")
@@ -104,7 +102,7 @@ class BookingFetcher:
             except PlaywrightTimeoutError:
                 print(f"\n{get_timestamp()} ❌ LOGIN FAILED for {account['name']}.\n")
                 await take_screenshot_on_error(page, account['name'], "login_failed")
-                self.fetch_summary[account['name']] = "Login Failed"
+                self.fetch_summary[account['email']] = "Login Failed" # Use email for summary key
                 return [], []
 
             await page.goto("https://camdenactive.camden.gov.uk/dashboards/my-bookings/")
@@ -121,11 +119,11 @@ class BookingFetcher:
                     break
             
             upcoming, past = self._filter_and_separate_bookings(all_pages_bookings)
-            self.fetch_summary[account['name']] = f"{len(upcoming)} upcoming bookings found"
+            self.fetch_summary[account['email']] = f"{len(upcoming)} upcoming bookings found"
             return upcoming, past
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error fetching for {account['name']}: {e}")
-            self.fetch_summary[account['name']] = "Error"
+            self.fetch_summary[account['email']] = "Error" # Use email for summary key
             if page: await take_screenshot_on_error(page, account['name'], "fetch_error")
             return [], []
         finally:
@@ -144,6 +142,8 @@ class BookingFetcher:
                     continue
                 booking_date = datetime.strptime(booking['Date'], '%d/%m/%Y').date()
                 if booking_date >= today:
+                    # Add Day of the week
+                    booking['Day'] = booking_date.strftime('%a')
                     upcoming.append(booking)
                 else:
                     booking['ReasonFiltered'] = 'Date in the Past'
@@ -166,7 +166,7 @@ class BookingFetcher:
                 booking_date_parsed, booking_time = self._parse_date_time_info(date_time_info)
                 bookings.append({
                     'Email': email, 'Facility': facility_name, 'Court Number': court_number,
-                    'Date': booking_date_parsed, 'Time': booking_time or "N/A",
+                    'Date': booking_date_parsed, 'Time': booking_time or "Multiple Slots",
                     'Date Booking Made': date_booking_made_raw.strip()
                 })
         except Exception as e:
@@ -201,7 +201,7 @@ class BookingFetcher:
             self.past_bookings.extend(past_list)
         print(f"\n{get_timestamp()} === Overall Fetch Summary ===")
         for account in self.accounts:
-            print(f"{get_timestamp()}   - {account['name']}: {self.fetch_summary.get(account['name'], 'Not Processed')}")
+            print(f"{get_timestamp()}   - {account['name']}: {self.fetch_summary.get(account['email'], 'Not Processed')}")
         print(f"{get_timestamp()} ✅ Total upcoming bookings: {len(self.upcoming_bookings)}")
         print(f"{get_timestamp()} - Total past/invalid filtered: {len(self.past_bookings)}")
 
@@ -209,7 +209,6 @@ class BookingFetcher:
         """Sort bookings primarily by date (ascending, closest first)."""
         def sort_key(b):
             try:
-                # Use a far future date for entries that can't be parsed to push them to the end
                 date_obj = datetime.strptime(b.get('Date', '31/12/9999'), '%d/%m/%Y')
             except ValueError:
                 date_obj = datetime.strptime('31/12/9999', '%d/%m/%Y')
@@ -235,7 +234,6 @@ class BookingFetcher:
                 data_rows = [[booking.get(key, '') for key in headers] for booking in sorted_bookings]
                 worksheet.update('A2', data_rows)
                 
-                # Find the 'Date' column index to format it
                 try:
                     date_col_letter = chr(ord('A') + headers.index('Date'))
                     worksheet.format(
@@ -262,34 +260,52 @@ class BookingFetcher:
             return
 
         print(f"\n{get_timestamp()} === Preparing and Sending Summary Email ===")
-        subject = f"Camden Tennis Bookings Summary - {get_london_datetime().strftime('%d-%m-%Y')}"
+        subject = f"Upcoming Camden Tennis Bookings Summary - {get_london_datetime().strftime('%d-%m-%Y')}"
         
+        # Build the summary list using emails
+        summary_list_html = ""
+        for account in self.accounts:
+            email = account['email']
+            result = self.fetch_summary.get(email, "Not Processed")
+            # Highlight failures explicitly
+            if "Failed" in result or "Error" in result:
+                summary_list_html += f"<li><b>{email}: <span style='color:red;'>{result}</span></b></li>"
+            else:
+                summary_list_html += f"<li><b>{email}:</b> {result}</li>"
+
         # Sort bookings for the email body
         sorted_for_email = self._sort_bookings(self.upcoming_bookings)
 
-        # Generate HTML table rows
+        # Generate HTML table rows with the new 'Day' column
         table_rows = ""
         if not sorted_for_email:
-            table_rows = '<tr><td colspan="6" style="text-align:center;">No upcoming bookings found.</td></tr>'
+            table_rows = '<tr><td colspan="7" style="text-align:center;">No upcoming bookings found.</td></tr>'
         else:
             for b in sorted_for_email:
                 table_rows += (f"<tr><td>{b.get('Facility','')}</td><td>{b.get('Court Number','')}</td>"
-                               f"<td>{b.get('Date','')}</td><td>{b.get('Time','')}</td>"
-                               f"<td>{b.get('Email','')}</td><td>{b.get('Date Booking Made','')}</td></tr>")
+                               f"<td>{b.get('Date','')}</td><td>{b.get('Day','')}</td>"
+                               f"<td>{b.get('Time','')}</td><td>{b.get('Email','')}</td>"
+                               f"<td>{b.get('Date Booking Made','')}</td></tr>")
 
         body = f"""
-        <html><body><h2>Upcoming Bookings ({len(self.upcoming_bookings)})</h2><p>Generated: {get_london_datetime().strftime('%Y-%m-%d %H:%M:%S')}</p>
-        <h3>Fetch Summary</h3><ul>{''.join([f"<li><b>{acc}:</b> {res}</li>" for acc, res in self.fetch_summary.items()])}</ul>
-        <p><b>{len(self.past_bookings)}</b> past/invalid bookings were filtered. See 'Filtered Out Bookings' sheet for details.</p>
+        <html><body>
+        <p>This e-mail summarises all future Camden Active bookings for the accounts listed below.</p>
+        <h2>Upcoming Bookings ({len(self.upcoming_bookings)})</h2>
+        <p>Generated: {get_london_datetime().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <h3>Fetch Summary</h3>
+        <ul>{summary_list_html}</ul>
         <table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse;width:100%;font-family:sans-serif;">
-        <tr style="background-color:#f2f2f2;"><th>Facility</th><th>Court Number</th><th>Date</th><th>Time</th><th>Email</th><th>Date Booking Made</th></tr>
+        <tr style="background-color:#f2f2f2;"><th>Facility</th><th>Court Number</th><th>Date</th><th>Day</th><th>Time</th><th>Email</th><th>Date Booking Made</th></tr>
         {table_rows}
-        </table></body></html>"""
+        </table>
+        <p style="margin-top:15px;font-size:small;">
+        <i><b>{len(self.past_bookings)}</b> past or invalid bookings were filtered. The full list, including the "Camden Active Booking Dates", can be found on the club's Google Drive.</i>
+        </p>
+        </body></html>"""
         
         recipients = [rcpt for rcpt in [IT_EMAIL_ADDRESS, KYLE_EMAIL_ADDRESS, RECIPIENT_INFO] if rcpt]
         for recipient in recipients:
             try:
-                # Using a self-contained email sending function to avoid conflicts
                 await self._send_html_email(recipient, subject, body)
             except Exception as e:
                 print(f"{get_timestamp()} ❌ Email sending failed for recipient {recipient}: {e}")
@@ -302,7 +318,7 @@ class BookingFetcher:
             msg['From'] = SENDER_EMAIL
             msg['To'] = recipient
             msg['Subject'] = subject
-            msg.attach(MIMEText(html_body, 'html'))
+            msg.attach(MIMEText(html_body, 'html', 'utf-8'))
             
             print(f"{get_timestamp()}     📧 SMTP: Connecting and sending to {recipient}...")
             server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
@@ -314,15 +330,14 @@ class BookingFetcher:
             if server:
                 server.quit()
 
-
 async def main():
     """Main function to fetch current bookings."""
     fetcher = BookingFetcher()
     if not await fetcher.initialize_systems(): return
     await fetcher.fetch_all_bookings()
 
-    # Define new headers with corrected order
-    upcoming_headers = ['Email', 'Facility', 'Court Number', 'Date', 'Time', 'Date Booking Made']
+    # Add 'Day' to headers for the upcoming bookings sheet
+    upcoming_headers = ['Email', 'Facility', 'Court Number', 'Date', 'Day', 'Time', 'Date Booking Made']
     await fetcher.update_google_sheet(fetcher.upcoming_bookings, "Upcoming Camden Bookings", upcoming_headers)
 
     past_headers = ['Email', 'Facility', 'Court Number', 'Date', 'Time', 'ReasonFiltered', 'Date Booking Made']

@@ -5,6 +5,7 @@ import os
 import pytz
 import asyncio
 import time
+import random
 from datetime import datetime, timedelta
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from utils import get_timestamp
@@ -249,6 +250,7 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
             try:
                 next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
                 await next_week_button.click(timeout=15000) # Increased timeout for the click itself
+                await asyncio.sleep(random.uniform(0.1, 0.25)) # Stagger requests to the server
 
                 # Wait for the DOM to be loaded, which is faster than waiting for the full page
                 await page.wait_for_load_state('domcontentloaded', timeout=15000)
@@ -265,12 +267,12 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
                     court_url_to_recover = slot_details[0]
                     await page.goto(court_url_to_recover, wait_until="domcontentloaded", timeout=20000)
                     
-                    # CRITICAL: We must re-apply the 3 strategic "Next Week" clicks 
+                    # CRITICAL: We must re-apply the 2 strategic "Next Week" clicks 
                     # to get back to the correct starting week for the race.
-                    log_msg = f"{get_timestamp()} 🔄 Recovery navigation complete. Re-applying 3-week strategic advance..."
+                    log_msg = f"{get_timestamp()} 🔄 Recovery navigation complete. Re-applying 2-week strategic advance..."
                     if session: session.log_message(log_msg)
                     
-                    for i in range(3):
+                    for i in range(2):
                          await page.locator("#ctl00_PageContent_btnNextWeek").click(timeout=10000)
                          await page.wait_for_load_state('domcontentloaded', timeout=10000)
 
@@ -426,19 +428,19 @@ async def find_date_on_calendar(page, target_date_str, slot_details, is_strategi
         else:
             print(log_msg)
         
-        # Step 1: Click Next Week only 3 times (get to week before target)
-        log_msg = f"{get_timestamp()} 📅 Advancing 3 weeks ahead to position before target..."
+        # Step 1: Click Next Week only 2 times (get to week before target)
+        log_msg = f"{get_timestamp()} 📅 Advancing 2 weeks ahead to position before target..."
         if session:
             session.log_message(log_msg)
         else:
             print(log_msg)
             
-        for i in range(3):
+        for i in range(2):
             try:
                 next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
                 # Increase timeout and use more robust waiting
                 await next_week_button.wait_for(state="visible", timeout=10000)
-                log_msg = f"{get_timestamp()}   - Clicking 'Next Week' ({i+1}/3)..."
+                log_msg = f"{get_timestamp()}   - Clicking 'Next Week' ({i+1}/2)..."
                 if session:
                     session.log_message(log_msg)
                 else:

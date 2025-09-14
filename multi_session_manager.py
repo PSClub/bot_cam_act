@@ -93,7 +93,7 @@ class BookingSession:
             print(f"{get_timestamp()} ❌ Failed to initialize browser for {self.account_name}: {e}")
             return False
     
-async def login(self):
+    async def login(self):
         """Login to the Camden Active website."""
         try:
             print(f"{get_timestamp()} --- Logging in {self.account_name} ({self.email}) ---")
@@ -451,10 +451,6 @@ class MultiSessionManager:
         except Exception as e:
             print(f"{get_timestamp()} ❌ Error during login process: {e}")
             return False
-    
-    
-    # REMOVED: book_distributed_slots - legacy method from old system
-    # Use book_assigned_slots instead
     
     async def book_assigned_slots(self, target_date):
         """

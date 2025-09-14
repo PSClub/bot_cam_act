@@ -116,8 +116,8 @@ class BookingSession:
             # Click login button
             await self.page.locator("a.button-primary:has-text('Log in')").click()
 
-            # Wait for successful login
-            await self.page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
+            # Wait for successful login by finding the specific logout button ID
+            await self.page.locator("#ctl00_btnLogout").wait_for(state="visible", timeout=15000)
 
             self.is_logged_in = True
             self.log_message(f"{get_timestamp()} ✅ {self.account_name} logged in successfully")
@@ -147,7 +147,7 @@ class BookingSession:
                 await self.page.get_by_label("Email Address").fill(trimmed_email)
                 await self.page.get_by_label("Password").fill(trimmed_password)
                 await self.page.locator("a.button-primary:has-text('Log in')").click()
-                await self.page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
+                await self.page.locator("#ctl00_btnLogout").wait_for(state="visible", timeout=15000)
 
                 self.is_logged_in = True
                 self.log_message(f"{get_timestamp()} ✅ {self.account_name} re-login successful!")
@@ -316,8 +316,9 @@ class BookingSession:
                 print(f"{get_timestamp()} --- Logging out {self.account_name} ---")
                 
                 try:
-                    if await self.page.locator("a:has-text('Logout')").is_visible(timeout=5000):
-                        await self.page.locator("a:has-text('Logout')").click()
+                    logout_button = self.page.locator("#ctl00_btnLogout")
+                    if await logout_button.is_visible(timeout=5000):
+                        await logout_button.click()
                         await self.page.wait_for_load_state('domcontentloaded')
                         print(f"{get_timestamp()} ✅ {self.account_name} logged out successfully")
                     else:

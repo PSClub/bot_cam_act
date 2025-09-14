@@ -93,40 +93,70 @@ class BookingSession:
             print(f"{get_timestamp()} ❌ Failed to initialize browser for {self.account_name}: {e}")
             return False
     
-    async def login(self):
+async def login(self):
         """Login to the Camden Active website."""
         try:
             print(f"{get_timestamp()} --- Logging in {self.account_name} ({self.email}) ---")
-            
+
             from config import LOGIN_URL
-            
+
             # Navigate to login page
             await self.page.goto(LOGIN_URL)
-            
+
             # Handle privacy banner if present
             try:
                 await self.page.locator("#rtPrivacyBannerAccept").click(timeout=5000)
             except:
                 pass  # Privacy banner might not be present
-            
+
             # Fill login form
             await self.page.get_by_label("Email Address").fill(self.email)
             await self.page.get_by_label("Password").fill(self.password)
-            
+
             # Click login button
             await self.page.locator("a.button-primary:has-text('Log in')").click()
-            
+
             # Wait for successful login
             await self.page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
-            
+
             self.is_logged_in = True
             self.log_message(f"{get_timestamp()} ✅ {self.account_name} logged in successfully")
             return True
-            
+
         except Exception as e:
-            self.log_message(f"{get_timestamp()} ❌ Login failed for {self.account_name}: {e}")
-            await take_screenshot(self.page, f"login_failed_{self.account_name.lower()}", session=self)
-            return False
+            self.log_message(f"{get_timestamp()} ❌ Initial login failed for {self.account_name}: {e}")
+            await take_screenshot(self.page, f"login_failed_initial_{self.account_name.lower()}", session=self)
+
+            # --- AMENDMENT START ---
+            # Print variables and attempt re-login with trimmed values
+            self.log_message(f"{get_timestamp()} 🔄 Attempting re-login with trimmed credentials...")
+            self.log_message(f"{get_timestamp()}   - Email Variable: '{self.email}'")
+            # For security, only show the length of the password
+            self.log_message(f"{get_timestamp()}   - Password Variable Length: {len(self.password)}")
+
+            trimmed_email = self.email.strip()
+            trimmed_password = self.password.strip()
+
+            if self.email != trimmed_email or self.password != trimmed_password:
+                self.log_message(f"{get_timestamp()}   - Whitespace detected and trimmed.")
+            else:
+                self.log_message(f"{get_timestamp()}   - No leading/trailing whitespace detected.")
+
+            try:
+                # Re-attempt login with trimmed credentials
+                await self.page.get_by_label("Email Address").fill(trimmed_email)
+                await self.page.get_by_label("Password").fill(trimmed_password)
+                await self.page.locator("a.button-primary:has-text('Log in')").click()
+                await self.page.locator("a:has-text('Logout')").wait_for(state="visible", timeout=15000)
+
+                self.is_logged_in = True
+                self.log_message(f"{get_timestamp()} ✅ {self.account_name} re-login successful!")
+                return True
+            except Exception as retry_e:
+                self.log_message(f"{get_timestamp()} ❌ Re-login failed for {self.account_name}: {retry_e}")
+                await take_screenshot(self.page, f"login_failed_retry_{self.account_name.lower()}", session=self)
+                return False
+            # --- AMENDMENT END ---
     
     async def book_slots_for_day(self, target_date, slots_to_book):
         """

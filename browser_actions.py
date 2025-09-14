@@ -246,41 +246,72 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
                 # If the check times out, just continue to the next step
                 pass
 
-            # If the date is not visible, click the "Next Week" button
-            try:
-                next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
-                await next_week_button.click(timeout=15000) # Increased timeout for the click itself
-                await asyncio.sleep(random.uniform(0.1, 0.25)) # Stagger requests to the server
+            # --- CHANGE START ---
+            # More intelligent logic: Check if the button exists before trying to click it.
+            next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
+            
+            # Use a short timeout to see if the button is present on the page.
+            if await next_week_button.is_visible(timeout=1000):
+                # If the button is visible, attempt to click it.
+                try:
+                    await next_week_button.click(timeout=15000)
+                    await asyncio.sleep(random.uniform(0.1, 0.25))
+                    await page.wait_for_load_state('domcontentloaded', timeout=15000)
 
-                # Wait for the DOM to be loaded, which is faster than waiting for the full page
-                await page.wait_for_load_state('domcontentloaded', timeout=15000)
+                except Exception as e:
+                    # This block now correctly handles failures during the click/load process.
+                    log_msg = f"{get_timestamp()} ⚠️ Click/Load failed: {e}. Attempting hard re-navigation..."
+                    if session:
+                        session.log_message(log_msg)
+                    else:
+                        print(log_msg)
+                    
+                    # HARD RESET: Re-navigate to recover from a broken page state.
+                    try:
+                        court_url_to_recover = slot_details[0]
+                        await page.goto(court_url_to_recover, wait_until="domcontentloaded", timeout=20000)
+                        
+                        log_msg = f"{get_timestamp()} 🔄 Recovery navigation complete. Re-applying 2-week strategic advance..."
+                        if session: session.log_message(log_msg)
+                        
+                        for i in range(2):
+                             await page.locator("#ctl00_PageContent_btnNextWeek").click(timeout=10000)
+                             await page.wait_for_load_state('domcontentloaded', timeout=10000)
 
-            except Exception as e:
-                log_msg = f"{get_timestamp()} ⚠️ Click/Load failed: {e}. Attempting hard re-navigation..."
+                    except Exception as nav_error:
+                        log_msg = f"{get_timestamp()} ❌ CRITICAL: Hard recovery navigation failed: {nav_error}. Loop continues but likely lost."
+                        if session: session.log_message(log_msg)
+                        await asyncio.sleep(2)
+            else:
+                # If the button is NOT visible, we've reached the end of the calendar.
+                log_msg = f"{get_timestamp()} 🛑 'Next Week' button not found. Performing final check on the last available week."
                 if session:
                     session.log_message(log_msg)
                 else:
                     print(log_msg)
                 
-                # HARD RESET: Instead of just reloading a broken page, re-navigate to the court URL.
+                # Perform one last, more patient check for the date.
                 try:
-                    court_url_to_recover = slot_details[0]
-                    await page.goto(court_url_to_recover, wait_until="domcontentloaded", timeout=20000)
-                    
-                    # CRITICAL: We must re-apply the 2 strategic "Next Week" clicks 
-                    # to get back to the correct starting week for the race.
-                    log_msg = f"{get_timestamp()} 🔄 Recovery navigation complete. Re-applying 2-week strategic advance..."
-                    if session: session.log_message(log_msg)
-                    
-                    for i in range(2):
-                         await page.locator("#ctl00_PageContent_btnNextWeek").click(timeout=10000)
-                         await page.wait_for_load_state('domcontentloaded', timeout=10000)
+                    if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=3000):
+                        log_msg = f"{get_timestamp()} ✅ Target date '{formatted_date}' found on the final page!"
+                        if session:
+                            session.log_message(log_msg)
+                        else:
+                            print(log_msg)
+                        await take_screenshot(page, "date_found_on_last_page", slot_details, session=session)
+                        return True
+                except:
+                    # This exception means the date was not found even after the patient check.
+                    pass
 
-                except Exception as nav_error:
-                    log_msg = f"{get_timestamp()} ❌ CRITICAL: Hard recovery navigation failed: {nav_error}. Loop continues but likely lost."
-                    if session: session.log_message(log_msg)
-                    # If the hard reset fails, sleep briefly just to stop rapid error looping.
-                    await asyncio.sleep(2)
+                # If we are here, the button is gone and the date was not on the final page.
+                log_msg = f"{get_timestamp()} ❌ Target date not found on the final page. Ending search."
+                if session:
+                    session.log_message(log_msg)
+                else:
+                    print(log_msg)
+                break # Exit the while loop cleanly.
+            # --- CHANGE END ---
 
         # If the loop finishes without finding the date, it has timed out
         log_msg = f"{get_timestamp()} ⏰ Timeout of {timeout_minutes} minutes reached. Could not find target date."
@@ -288,6 +319,7 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
             session.log_message(log_msg)
         else:
             print(log_msg)
+        await take_screenshot(page, "date_search_timeout", slot_details, session=session)
         return False
 
     except Exception as e:
@@ -296,11 +328,11 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
             session.log_message(log_msg)
         else:
             print(log_msg)
+        await take_screenshot(page, "post_midnight_critical_error", slot_details, session=session)
         return False
     finally:
         # Always remove the dialog handler to avoid memory leaks
         page.remove_listener("dialog", dialog_handler)
-
 async def rapid_advance_to_target_week(page, target_date_str, slot_details, session=None):
     """Rapidly click Next Week until we find the target date or reach the end."""
     date_obj = datetime.strptime(target_date_str, "%d/%m/%Y")

@@ -207,7 +207,7 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
 
     london_tz = pytz.timezone("Europe/London")
     start_time = datetime.now(london_tz)
-    timeout_minutes = 2
+    timeout_seconds = 80  # MODIFIED: Reduced timeout to 80 seconds
 
     date_obj = datetime.strptime(target_date_str, "%d/%m/%Y")
     formatted_date = f"{date_obj.strftime('%a').upper()} {date_obj.day}/{date_obj.month}"
@@ -230,8 +230,8 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
     page.on("dialog", dialog_handler)
 
     try:
-        # Loop for a maximum of 2 minutes
-        while (datetime.now(london_tz) - start_time).total_seconds() < (timeout_minutes * 60):
+        # Loop for a maximum of the specified timeout
+        while (datetime.now(london_tz) - start_time).total_seconds() < timeout_seconds:
             # First, check if the date is already visible. This is a quick check.
             try:
                 if await page.locator(f"h4.timetable-title:has-text('{formatted_date}')").is_visible(timeout=500):
@@ -246,7 +246,6 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
                 # If the check times out, just continue to the next step
                 pass
 
-            # --- CHANGE START ---
             # More intelligent logic: Check if the button exists before trying to click it.
             next_week_button = page.locator("#ctl00_PageContent_btnNextWeek")
             
@@ -311,10 +310,9 @@ async def post_midnight_calendar_advancement(page, target_date_str, slot_details
                 else:
                     print(log_msg)
                 break # Exit the while loop cleanly.
-            # --- CHANGE END ---
 
         # If the loop finishes without finding the date, it has timed out
-        log_msg = f"{get_timestamp()} ⏰ Timeout of {timeout_minutes} minutes reached. Could not find target date."
+        log_msg = f"{get_timestamp()} ⏰ Timeout of {timeout_seconds} seconds reached. Could not find target date."
         if session:
             session.log_message(log_msg)
         else:

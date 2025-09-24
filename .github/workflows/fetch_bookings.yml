@@ -3,7 +3,7 @@ name: Fetch Current Camden Bookings
 on:
   schedule:
     # Run every Monday morning
-    - cron: '15 6 * * 1'
+    - cron: '15 6 * * *'
   
   # Allow manual triggering
   workflow_dispatch:

@@ -275,9 +275,15 @@ class BookingSession:
                 self.log_message(f"{get_timestamp()} ✅ {self.account_name} checkout successful")
             else:
                 self.log_message(f"{get_timestamp()} ❌ {self.account_name} checkout failed")
+                # MODIFIED: If checkout failed, move all successful bookings to failed bookings
+                self.failed_bookings.extend(self.successful_bookings)
+                self.successful_bookings.clear()
+
 
             # Log the final outcome for all slots that were in the basket
-            self.log_message(f"{get_timestamp()} --- Logging final status for {len(self.successful_bookings)} basket items for {self.account_name} ---")
+            self.log_message(f"{get_timestamp()} --- Logging final status for {len(self.successful_bookings) + len(self.failed_bookings)} basket items for {self.account_name} ---")
+            
+            # Log successful bookings
             for court_url, date, time in self.successful_bookings:
                 log_entry = self.sheets_manager.create_log_entry(
                     email=self.email,
@@ -289,6 +295,19 @@ class BookingSession:
                 )
                 self.sheets_manager.write_booking_log(log_entry)
 
+            # Log failed bookings (including those that failed during checkout)
+            for court_url, date, time in self.failed_bookings:
+                log_entry = self.sheets_manager.create_log_entry(
+                    email=self.email,
+                    court=self.court_number,
+                    date=date,
+                    time=time,
+                    status='❌ Checkout Failed',
+                    error_details='Payment failed or checkout timed out'
+                )
+                self.sheets_manager.write_booking_log(log_entry)
+
+
             return checkout_success
 
         except Exception as e:
@@ -297,7 +316,9 @@ class BookingSession:
             
             # If a critical error happens during checkout, log all basket items as failed
             if self.successful_bookings:
-                for court_url, date, time in self.successful_bookings:
+                self.failed_bookings.extend(self.successful_bookings)
+                self.successful_bookings.clear()
+                for court_url, date, time in self.failed_bookings:
                     log_entry = self.sheets_manager.create_log_entry(
                         email=self.email,
                         court=self.court_number,
